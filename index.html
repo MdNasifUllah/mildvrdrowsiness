@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Driver Drowsiness Detection System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000000;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+        }
+
+        .container {
+            background: #1a1a2e;
+            border-radius: 0;
+            box-shadow: none;
+            overflow: hidden;
+            max-width: 100%;
+            width: 100%;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            border-radius: 20px;
+            overflow: hidden;
+            background: #0a0a0a;
+            margin-bottom: 20px;
+            aspect-ratio: 16 / 9;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transform: scaleX(-1);
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            transform: scaleX(-1);
+        }
+
+        .status-panel {
+            background: #0f0f1a;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            border: 1px solid #2a2a3e;
+        }
+
+        .status-label {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .status-value {
+            font-size: 2rem;
+            font-weight: bold;
+            padding: 15px;
+            border-radius: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .status-value.awake {
+            background: #00c853;
+            color: white;
+        }
+
+        .status-value.drowsy {
+            background: #ff6d00;
+            color: white;
+            animation: pulse 1s infinite;
+        }
+
+        .status-value.critical {
+            background: #d50000;
+            color: white;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.02); }
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: #0f0f1a;
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+            border: 1px solid #2a2a3e;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00d4ff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 16px 24px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #startBtn {
+            background: #00c853;
+            color: white;
+        }
+
+        #startBtn:active {
+            transform: scale(0.97);
+            background: #009624;
+        }
+
+        #stopBtn {
+            background: #d50000;
+            color: white;
+        }
+
+        #stopBtn:active {
+            transform: scale(0.97);
+            background: #9b0000;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alert-area {
+            position: fixed;
+            bottom: 30px;
+            left: 20px;
+            right: 20px;
+            padding: 18px;
+            border-radius: 20px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+            z-index: 1000;
+            font-size: 1.1rem;
+        }
+
+        .alert-area.show {
+            display: block;
+            animation: slideUp 0.3s ease;
+        }
+
+        .alert-area.warning {
+            background: #ff6d00;
+            color: white;
+        }
+
+        .alert-area.danger {
+            background: #d50000;
+            color: white;
+            font-size: 1.2rem;
+            box-shadow: 0 0 30px rgba(213,0,0,0.5);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .info {
+            margin-top: auto;
+            padding: 12px;
+            background: #0f0f1a;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            color: #555;
+            text-align: center;
+            border: 1px solid #2a2a3e;
+        }
+
+        /* Landscape optimization for car display */
+        @media (orientation: landscape) and (min-width: 1024px) {
+            .container {
+                padding: 20px 40px;
+            }
+            
+            .metrics {
+                gap: 20px;
+            }
+            
+            .status-value {
+                font-size: 2.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mil Dvr Drowsiness Detection Sys</h1>
+        
+        <div class="video-container">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="status-panel">
+            <div class="status-value awake" id="statusText">ALERTNESS STATE</div>
+        </div>
+        
+        <div class="metrics">
+            <div class="metric-card">
+                <div class="metric-label">Left Eye EAR</div>
+                <div class="metric-value" id="leftEAR">0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Right Eye EAR</div>
+                <div class="metric-value" id="rightEAR">0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Average EAR</div>
+                <div class="metric-value" id="avgEAR">0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Closed Frames</div>
+                <div class="metric-value" id="counter">0</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">▶ Start Detection</button>
+            <button id="stopBtn" disabled>⏹ Stop Detection</button>
+        </div>
+        
+        <div id="alertBox" class="alert-area"></div>
+        
+        <div class="info">
+            8 SIG BN || 24 INF DIV
+        </div>
+    </div>
+
+    <!-- MediaPipe Face Detection Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    
+    <script>
+        // Configuration parameters
+        const CONFIG = {
+            EAR_THRESHOLD: 0.22,       // Threshold for eye closure (below this = closed)
+            FRAME_THRESHOLD: 30,       // Number of consecutive frames before alert
+            ALERT_SOUND_VOLUME: 1,     // Alert volume (0 to 1)
+        };
+        
+        // DOM Elements
+        const videoElement = document.getElementById('video');
+        const canvasElement = document.getElementById('canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusText = document.getElementById('statusText');
+        const leftEarSpan = document.getElementById('leftEAR');
+        const rightEarSpan = document.getElementById('rightEAR');
+        const avgEarSpan = document.getElementById('avgEAR');
+        const counterSpan = document.getElementById('counter');
+        const alertBox = document.getElementById('alertBox');
+        
+        // State variables
+        let faceMesh = null;
+        let isRunning = false;
+        let closedFrames = 0;
+        let alertPlaying = false;
+        let alertTimeout = null;
+        let stream = null;
+        let animationId = null;
+        
+        // Audio context for beep sound
+        let audioContext = null;
+        
+        // Helper function to calculate Eye Aspect Ratio (EAR)
+        function calculateEAR(eyeLandmarks) {
+            if (eyeLandmarks.length !== 6) return 0;
+            
+            const vertical1 = Math.hypot(
+                eyeLandmarks[1].x - eyeLandmarks[5].x,
+                eyeLandmarks[1].y - eyeLandmarks[5].y
+            );
+            const vertical2 = Math.hypot(
+                eyeLandmarks[2].x - eyeLandmarks[4].x,
+                eyeLandmarks[2].y - eyeLandmarks[4].y
+            );
+            const horizontal = Math.hypot(
+                eyeLandmarks[0].x - eyeLandmarks[3].x,
+                eyeLandmarks[0].y - eyeLandmarks[3].y
+            );
+            
+            if (horizontal === 0) return 0;
+            return (vertical1 + vertical2) / (2.0 * horizontal);
+        }
+        
+        // Play alert sound for drowsiness
+        function playAlertSound() {
+            if (alertPlaying) return;
+            
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                alertPlaying = true;
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 880;
+                gainNode.gain.value = CONFIG.ALERT_SOUND_VOLUME;
+                oscillator.start();
+                
+                setTimeout(() => {
+                    oscillator.stop();
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.1);
+                    setTimeout(() => {
+                        alertPlaying = false;
+                    }, 200);
+                }, 500);
+                
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            } catch (e) {
+                console.warn('Could not play alert sound:', e);
+                alertPlaying = false;
+            }
+        }
+        
+        function stopAlertSound() {
+            alertPlaying = false;
+        }
+
+        // Play alert sound for NO DRIVER DETECTED (different tone)
+        function playAlertSound2() {
+            if (alertPlaying) return;
+            
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                alertPlaying = true;
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.type = 'triangle'; 
+                oscillator.frequency.value = 1760; 
+                gainNode.gain.value = CONFIG.ALERT_SOUND_VOLUME;
+                oscillator.start();
+                
+                setTimeout(() => {
+                    oscillator.stop();
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.1);
+                    setTimeout(() => {
+                        alertPlaying = false;
+                    }, 200);
+                }, 200);
+                
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            } catch (e) {
+                console.warn('Could not play alert sound:', e);
+                alertPlaying = false;
+            }
+        }
+        
+        function showAlert(message, isDanger = true) {
+            alertBox.innerHTML = isDanger ? `⚠️ ${message} ⚠️` : `⚠️ ${message}`;
+            alertBox.className = `alert-area show ${isDanger ? 'danger' : 'warning'}`;
+            
+            if (alertTimeout) clearTimeout(alertTimeout);
+            alertTimeout = setTimeout(() => {
+                if (closedFrames < CONFIG.FRAME_THRESHOLD) {
+                    alertBox.classList.remove('show');
+                }
+            }, 2000);
+        }
+        
+        function hideAlert() {
+            if (alertTimeout) clearTimeout(alertTimeout);
+            alertBox.classList.remove('show');
+        }
+        
+        function setCanvasSize() {
+            if (videoElement.videoWidth && videoElement.videoHeight) {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            } else {
+                setTimeout(setCanvasSize, 100);
+            }
+        }
+        
+        // Process face mesh results
+        function onFaceMeshResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (!isRunning) {
+                canvasCtx.restore();
+                return;
+            }
+            
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                
+                const leftEyeIndices = [33, 160, 158, 133, 153, 144];
+                const rightEyeIndices = [362, 385, 387, 263, 373, 380];
+                
+                const leftEyePoints = leftEyeIndices.map(idx => landmarks[idx]);
+                const rightEyePoints = rightEyeIndices.map(idx => landmarks[idx]);
+                
+                const leftEAR = calculateEAR(leftEyePoints);
+                const rightEAR = calculateEAR(rightEyePoints);
+                const avgEAR = (leftEAR + rightEAR) / 2;
+                
+                leftEarSpan.textContent = leftEAR.toFixed(3);
+                rightEarSpan.textContent = rightEAR.toFixed(3);
+                avgEarSpan.textContent = avgEAR.toFixed(3);
+                
+                // Draw face landmarks
+                canvasCtx.fillStyle = '#00ff00';
+                canvasCtx.strokeStyle = '#00ff00';
+                canvasCtx.lineWidth = 1;
+                
+                for (let i = 0; i < landmarks.length; i++) {
+                    const x = landmarks[i].x * canvasElement.width;
+                    const y = landmarks[i].y * canvasElement.height;
+                    canvasCtx.fillRect(x - 1, y - 1, 2, 2);
+                }
+                
+                // Highlight eyes
+                canvasCtx.fillStyle = '#ffff00';
+                [...leftEyePoints, ...rightEyePoints].forEach(point => {
+                    const x = point.x * canvasElement.width;
+                    const y = point.y * canvasElement.height;
+                    canvasCtx.fillRect(x - 2, y - 2, 4, 4);
+                });
+                
+                // Drowsiness detection logic
+                if (avgEAR < CONFIG.EAR_THRESHOLD) {
+                    closedFrames++;
+                    counterSpan.textContent = closedFrames;
+                    
+                    if (closedFrames >= CONFIG.FRAME_THRESHOLD) {
+                        statusText.textContent = '⚠️ DROWSY - WAKE UP! ⚠️';
+                        statusText.className = 'status-value critical';
+                        showAlert('DROWSINESS DETECTED! Please take a break or wake up!', true);
+                        playAlertSound();
+                    } else if (closedFrames >= CONFIG.FRAME_THRESHOLD * 0.5) {
+                        statusText.textContent = 'GETTING SLEEPY';
+                        statusText.className = 'status-value drowsy';
+                        showAlert('Eyes closing - Stay alert!', false);
+                    } else {
+                        statusText.textContent = 'BLINKING';
+                        statusText.className = 'status-value drowsy';
+                    }
+                } else {
+                    if (closedFrames >= CONFIG.FRAME_THRESHOLD) {
+                        showAlert('Status: AWAKE - Stay safe!', false);
+                        stopAlertSound();
+                        setTimeout(() => hideAlert(), 1500);
+                    }
+                    closedFrames = 0;
+                    counterSpan.textContent = closedFrames;
+                    statusText.textContent = 'AWAKE';
+                    statusText.className = 'status-value awake';
+                }
+            } else {
+                // NO DRIVER DETECTED - Your custom alert
+                leftEarSpan.textContent = '0.000';
+                rightEarSpan.textContent = '0.000';
+                avgEarSpan.textContent = '0.000';
+                statusText.textContent = 'NO DVR DETECTED';
+                statusText.className = 'status-value';
+                closedFrames = 0;
+                counterSpan.textContent = closedFrames;
+                playAlertSound2();
+            }
+            
+            canvasCtx.restore();
+        }
+        
+        async function initFaceMesh() {
+            faceMesh = new FaceMesh({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }
+            });
+            
+            faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            
+            faceMesh.onResults(onFaceMeshResults);
+            
+            return true;
+        }
+        
+        // Processing loop for iPad (no Camera utils dependency)
+        async function processLoop() {
+            if (isRunning && faceMesh && videoElement.readyState >= 2) {
+                await faceMesh.send({ image: videoElement });
+            }
+            if (isRunning) {
+                requestAnimationFrame(processLoop);
+            }
+        }
+        
+        async function startDetection() {
+            try {
+                statusText.textContent = 'STARTING...';
+                
+                // Request camera access directly (works with USB webcam on iPad)
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    }
+                });
+                
+                videoElement.srcObject = stream;
+                
+                await new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.play();
+                        resolve();
+                    };
+                });
+                
+                setCanvasSize();
+                
+                if (!faceMesh) {
+                    await initFaceMesh();
+                }
+                
+                isRunning = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                closedFrames = 0;
+                counterSpan.textContent = '0';
+                hideAlert();
+                
+                // Start processing loop
+                processLoop();
+                
+                console.log('Detection started successfully');
+                
+            } catch (error) {
+                console.error('Error starting detection:', error);
+                alert('Could not access camera.\n\nMake sure:\n1. USB webcam is connected via USB-C hub\n2. Camera permissions are granted');
+                statusText.textContent = 'CAMERA ERROR';
+                isRunning = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        function stopDetection() {
+            isRunning = false;
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            videoElement.srcObject = null;
+            
+            if (canvasCtx) {
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            }
+            
+            statusText.textContent = '⏸ STOPPED';
+            statusText.className = 'status-value';
+            leftEarSpan.textContent = '0.000';
+            rightEarSpan.textContent = '0.000';
+            avgEarSpan.textContent = '0.000';
+            counterSpan.textContent = '0';
+            closedFrames = 0;
+            hideAlert();
+            stopAlertSound();
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        
+        // Initialize audio context on first user interaction
+        function initAudioOnFirstClick() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            document.removeEventListener('click', initAudioOnFirstClick);
+        }
+        document.addEventListener('click', initAudioOnFirstClick);
+        
+        console.log('iPad Drowsiness Detection System Ready');
+        console.log(`Configuration: EAR Threshold = ${CONFIG.EAR_THRESHOLD}, Frame Threshold = ${CONFIG.FRAME_THRESHOLD}`);
+        console.log('Connect USB webcam via USB-C hub for best results');
+    </script>
+</body>
+</html>
