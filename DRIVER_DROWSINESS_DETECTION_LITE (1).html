@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Driver Drowsiness Detection</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#10141a;color:#e8edf3;min-height:100vh;padding:12px;display:flex;justify-content:center}
+body[data-s=ok]{background:#0d3b1c}
+body[data-s=calib]{background:#12304f}
+body[data-s=warn]{background:#6b4300}
+body[data-s=alarm]{background:#a01212}
+body[data-s=nodriver]{background:#4a1d6b}
+.wrap{width:100%;max-width:560px}
+h1{font-size:1.1rem;text-align:center;margin:4px 0 10px}
+#box{position:relative;width:100%;max-width:400px;margin:0 auto 10px;aspect-ratio:4/3;background:#000;border-radius:10px;overflow:hidden}
+#v,#c{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)}
+.panel{background:rgba(0,0,0,.35);border-radius:10px;padding:12px;text-align:center;margin-bottom:10px}
+#st{font-size:1.6rem;font-weight:700}
+#sub{font-size:.85rem;opacity:.8;min-height:1.1em}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.card{background:rgba(0,0,0,.35);border-radius:8px;padding:8px;text-align:center}
+.card small{display:block;font-size:.7rem;opacity:.7}
+.card b{font-size:1.15rem}
+.btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+button{padding:11px 18px;font-size:.95rem;font-weight:700;border:0;border-radius:10px;color:#fff;cursor:pointer}
+#go{background:#2e9e4f}#cal{background:#2f6fd0}#stop{background:#d23b3b}#lg{background:#555}
+button:disabled{opacity:.45}
+#msg,#perf,.foot{text-align:center;font-size:.75rem;opacity:.75;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mil Dvr Drowsiness Detection Sys</h1>
+  <div id="box"><video id="v" playsinline muted></video><canvas id="c"></canvas></div>
+  <div class="panel"><div id="st">READY</div><div id="sub"></div></div>
+  <div class="grid">
+    <div class="card"><small>Left EAR</small><b id="l">0.00</b></div>
+    <div class="card"><small>Right EAR</small><b id="r">0.00</b></div>
+    <div class="card"><small>Average EAR</small><b id="a">0.00</b></div>
+    <div class="card"><small>Eyes closed (s)</small><b id="cs">0.0</b></div>
+    <div class="card"><small>PERCLOS (60s)</small><b id="pc">0%</b></div>
+    <div class="card"><small>Yawns (10 min)</small><b id="y">0</b></div>
+  </div>
+  <div class="btns">
+    <button id="go">▶ Start</button><button id="cal" disabled>🎯 Calibrate</button>
+    <button id="stop" disabled>⏹ Stop</button><button id="lg">⬇ Log</button>
+  </div>
+  <div id="msg"></div><div id="perf"></div>
+  <div class="foot">8 SIG BN || 24 INF DIV</div>
+</div>
+<script>
+const CFG={
+  // Change these 3 URLs to local files for fully offline use
+  BUNDLE:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
+  WASM:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+  MODEL:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+  CAM_W:480,CAM_H:360,
+  MAX_FPS:15,MIN_FPS:5,
+  CALIB_MS:4000,
+  CLOSE_RATIO:.72,      // eye "closed" for alarm timing = 72% of driver's open-eye EAR
+  PERCLOS_RATIO:.5,     // PERCLOS counts only deep closure (below 50% of open-eye EAR)
+  PERCLOS_LIMIT:.18,PERCLOS_CLEAR:.10,PERCLOS_MIN_MS:30000,PERCLOS_WIN:60000,
+  WARN_MS:500,ALARM_MS:1000,ALARM2_MS:3000,NO_FACE_MS:1500,
+  YAWN_MS:1200,YAWN_CLUSTER:3,YAWN_WIN:600000,
+  PITCH_DELTA:.12,ROLL_DEG:25,DROOP_MS:1500, // head nod / tilt vs. calibrated posture
+  VOLUME:1
+};
+const $=id=>document.getElementById(id);
+const v=$('v'),cv=$('c'),cx=cv.getContext('2d');
+const L=[33,160,158,133,153,144],R=[362,385,387,263,373,380],EYES=[...L,...R];
+let lm,stream,wl,ac,run=false,timer,alarmTimer,lastVT=-1,fps=CFG.MAX_FPS,inf=0,adT=0,mT=0,W=1,H=1,S;
+const LOG=[];
+function log(t){LOG.push(new Date().toISOString()+','+t);if(LOG.length>500)LOG.shift()}
+
+function reset(){S={cal:[],calM:[],calP:[],calR:[],calStart:0,base:.28,thr:.2,thrP:.14,thrM:.6,pit0:null,roll0:0,
+  ear:0,closedAt:0,noFaceAt:0,mouthAt:0,droopAt:0,yawnDone:false,yt:[],yawnUntil:0,fat:false,
+  q:[],qh:0,sc:0,st:0,last:0,state:'',txt:'',sub:'',alarm:''}}
+reset();
+
+const d=(a,b)=>Math.hypot((a.x-b.x)*W,(a.y-b.y)*H);
+const ear=(p,i)=>(d(p[i[1]],p[i[5]])+d(p[i[2]],p[i[4]]))/(2*d(p[i[0]],p[i[3]])||1e9);
+
+function beep(f,ms,type){
+  if(!ac)return;
+  try{
+    const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime,s=ms/1000;
+    o.type=type;o.frequency.value=f;
+    g.gain.setValueAtTime(CFG.VOLUME,t);g.gain.setValueAtTime(CFG.VOLUME,t+s*.8);
+    g.gain.exponentialRampToValueAtTime(1e-4,t+s);
+    o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+s+.02);
+  }catch(e){}
+}
+// alarm: [sound fn, repeat ms, vibration pattern]
+const AL={
+  drowsy:[()=>beep(880,450,'square'),700,[300,100,300]],
+  drowsy2:[()=>beep(1200,300,'square'),380,[500,100,500]], // escalated after 3 s
+  nodriver:[()=>beep(1760,200,'triangle'),900]
+};
+function setAlarm(k){
+  if(S.alarm===k)return;
+  S.alarm=k;clearInterval(alarmTimer);
+  if(!k){navigator.vibrate&&navigator.vibrate(0);return}
+  const a=AL[k],f=()=>{a[0]();a[2]&&navigator.vibrate&&navigator.vibrate(a[2])};
+  f();alarmTimer=setInterval(f,a[1]);
+}
+function show(k,t,s){
+  s=s||'';
+  if(S.state===k&&S.txt===t&&S.sub===s)return;
+  if(S.state!==k||S.txt!==t){
+    if(k==='warn'||k==='alarm'||k==='nodriver')log(t);
+    if(k==='warn'&&S.state!=='warn')beep(660,250,'sine');
+  }
+  if(S.state!==k)document.body.dataset.s=k;
+  S.state=k;S.txt=t;S.sub=s;$('st').textContent=t;$('sub').textContent=s;
+}
+function metrics(l,r,e,c,pc,now){
+  if(now-mT<250)return;mT=now;
+  $('l').textContent=l.toFixed(2);$('r').textContent=r.toFixed(2);$('a').textContent=e.toFixed(2);
+  $('cs').textContent=(c/1000).toFixed(1);$('pc').textContent=Math.round(pc*100)+'%';$('y').textContent=S.yt.length;
+  $('perf').textContent=fps+' fps | '+Math.round(inf)+' ms/frame | eye limit '+S.thr.toFixed(2)+' | yawn limit '+S.thrM.toFixed(2);
+}
+function draw(p){
+  cx.clearRect(0,0,cv.width,cv.height);cx.fillStyle='#0f0';
+  for(const i of EYES)cx.fillRect(p[i].x*W-2,p[i].y*H-2,4,4);
+}
+
+// start a (re)calibration for the current driver
+function calibrate(){
+  if(!run)return;
+  S.cal=[];S.calM=[];S.calP=[];S.calR=[];S.calStart=0;
+  S.closedAt=0;S.mouthAt=0;S.droopAt=0;S.fat=false;setAlarm('');
+}
+function finish(){
+  const q=(a,f)=>a.slice().sort((x,y)=>x-y)[Math.floor(a.length*f)];
+  if(S.cal.length>=8){
+    S.base=Math.min(.45,Math.max(.16,q(S.cal,.75)));   // typical open-eye EAR
+    S.thrM=Math.min(.7,Math.max(.5,q(S.calM,.5)+.45)); // yawn = mouth far beyond resting
+    S.pit0=q(S.calP,.5);S.roll0=q(S.calR,.5);          // neutral head posture
+    $('msg').textContent='Calibrated. Open-eye EAR '+S.base.toFixed(2);log('CALIBRATED base='+S.base.toFixed(3));
+  }else $('msg').textContent='Calibration failed (face not seen enough) - kept previous values';
+  S.thr=Math.min(.26,Math.max(.12,S.base*CFG.CLOSE_RATIO));S.thrP=S.base*CFG.PERCLOS_RATIO;
+  S.cal=null;S.q=[];S.qh=0;S.sc=0;S.st=0;
+  setTimeout(()=>{if(run)$('msg').textContent=''},4000);
+}
+
+function step(now){
+  const res=lm.detectForVideo(v,now),p=res.faceLandmarks&&res.faceLandmarks[0];
+  const dt=Math.min(now-S.last,500)||0;S.last=now;
+  if(!p){
+    cx.clearRect(0,0,cv.width,cv.height);S.closedAt=0;S.mouthAt=0;S.droopAt=0;
+    if(!S.noFaceAt)S.noFaceAt=now;
+    if(now-S.noFaceAt>CFG.NO_FACE_MS){show('nodriver','NO DRIVER DETECTED','Face the camera');setAlarm('nodriver')}
+    return;
+  }
+  S.noFaceAt=0;draw(p);
+  const l=ear(p,L),r=ear(p,R),raw=(l+r)/2;
+  S.ear=S.ear?S.ear*.5+raw*.5:raw;const e=S.ear;
+  const mar=d(p[13],p[14])/(d(p[78],p[308])||1e9);                              // mouth opening
+  const pit=d(p[168],p[1])/(d(p[168],p[152])||1e9);                              // head pitch proxy
+  const roll=Math.atan2((p[263].y-p[33].y)*H,(p[263].x-p[33].x)*W)*57.3;         // head tilt (deg)
+
+  if(!S.calStart)S.calStart=now;
+  if(S.cal){
+    if(now-S.calStart<CFG.CALIB_MS){
+      S.cal.push(raw);S.calM.push(mar);S.calP.push(pit);S.calR.push(roll);setAlarm('');
+      show('calib','CALIBRATING','Sit normally, look ahead, eyes open ('+Math.ceil((CFG.CALIB_MS-(now-S.calStart))/1000)+'s)');
+      metrics(l,r,e,0,0,now);return;
+    }
+    finish();
+  }
+
+  const closed=e<S.thr,deep=e<S.thrP;
+  if(closed){if(!S.closedAt)S.closedAt=now}else S.closedAt=0;
+  const cms=S.closedAt?now-S.closedAt:0;
+
+  // PERCLOS over last 60 s, counting only deep closure; hysteresis stops flicker
+  S.q.push([now,dt,deep?1:0]);S.st+=dt;if(deep)S.sc+=dt;
+  while(S.q[S.qh][0]<now-CFG.PERCLOS_WIN){const o=S.q[S.qh++];S.st-=o[1];if(o[2])S.sc-=o[1]}
+  if(S.qh>300){S.q=S.q.slice(S.qh);S.qh=0}
+  const pc=S.st>0?S.sc/S.st:0;
+  if(S.st>CFG.PERCLOS_MIN_MS){if(!S.fat&&pc>CFG.PERCLOS_LIMIT)S.fat=true;else if(S.fat&&pc<CFG.PERCLOS_CLEAR)S.fat=false}
+
+  // yawns (per-driver mouth limit), clustered over 10 min
+  if(mar>S.thrM){
+    if(!S.mouthAt)S.mouthAt=now;
+    if(!S.yawnDone&&now-S.mouthAt>CFG.YAWN_MS){S.yawnDone=true;S.yt.push(now);S.yawnUntil=now+4000;log('YAWN')}
+  }else{S.mouthAt=0;S.yawnDone=false}
+  while(S.yt.length&&now-S.yt[0]>CFG.YAWN_WIN)S.yt.shift();
+
+  // head droop / tilt vs calibrated posture
+  const dev=S.pit0!==null&&(Math.abs(pit-S.pit0)>CFG.PITCH_DELTA||Math.abs(roll-S.roll0)>CFG.ROLL_DEG);
+  if(dev){if(!S.droopAt)S.droopAt=now}else S.droopAt=0;
+
+  if(cms>=CFG.ALARM2_MS){show('alarm','DROWSY - WAKE UP!','Eyes closed');setAlarm('drowsy2')}
+  else if(cms>=CFG.ALARM_MS){show('alarm','DROWSY - WAKE UP!','Eyes closed');setAlarm('drowsy')}
+  else{
+    setAlarm('');
+    if(cms>=CFG.WARN_MS)show('warn','GETTING SLEEPY','Stay alert');
+    else if(S.droopAt&&now-S.droopAt>CFG.DROOP_MS)show('warn','HEAD DROOPING','Keep your head up');
+    else if(S.fat)show('warn','FATIGUE WARNING','Frequent eye closure - take a break');
+    else if(S.yt.length>=CFG.YAWN_CLUSTER)show('warn','FATIGUE WARNING','Repeated yawning - take a break');
+    else if(now<S.yawnUntil)show('warn','YAWNING','Sign of fatigue');
+    else show('ok','AWAKE','');
+  }
+  metrics(l,r,e,cms,pc,now);
+}
+
+function loop(){
+  if(!run)return;
+  const t0=performance.now();
+  if(v.readyState>=2&&v.currentTime!==lastVT){
+    lastVT=v.currentTime;
+    try{step(t0)}catch(err){console.warn(err)}
+    inf=inf*.8+(performance.now()-t0)*.2;
+    if(t0-adT>2000){
+      adT=t0;
+      if(inf*fps>450&&fps>CFG.MIN_FPS)fps--;
+      else if(inf*(fps+1)<250&&fps<CFG.MAX_FPS)fps++;
+    }
+  }
+  timer=setTimeout(loop,Math.max(0,1000/fps-(performance.now()-t0)));
+}
+
+async function start(){
+  $('go').disabled=true;$('msg').textContent='Loading model (first time ~4 MB)...';
+  try{
+    ac=ac||new(window.AudioContext||window.webkitAudioContext)();ac.resume();
+    if(!lm){
+      const {FaceLandmarker,FilesetResolver}=await import(CFG.BUNDLE);
+      const fs=await FilesetResolver.forVisionTasks(CFG.WASM);
+      const mk=dl=>FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:CFG.MODEL,delegate:dl},runningMode:'VIDEO',numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:false});
+      try{lm=await mk('GPU')}catch(e){lm=await mk('CPU')}
+    }
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:CFG.CAM_W},height:{ideal:CFG.CAM_H},frameRate:{ideal:CFG.MAX_FPS}}});
+    v.srcObject=stream;await v.play();
+    W=cv.width=v.videoWidth;H=cv.height=v.videoHeight;$('box').style.aspectRatio=W+'/'+H;
+    reset();fps=CFG.MAX_FPS;inf=0;lastVT=-1;run=true;
+    $('stop').disabled=false;$('cal').disabled=false;$('msg').textContent='';
+    try{wl=await navigator.wakeLock.request('screen')}catch(e){}
+    loop();
+  }catch(e){
+    $('msg').textContent='Error: '+(e.message||e)+' (camera needs HTTPS or localhost)';$('go').disabled=false;
+  }
+}
+function stop(){
+  run=false;clearTimeout(timer);setAlarm('');
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  v.srcObject=null;if(wl)wl.release().catch(()=>{});
+  cx.clearRect(0,0,cv.width,cv.height);document.body.dataset.s='';
+  $('st').textContent='STOPPED';$('sub').textContent='';
+  $('go').disabled=false;$('stop').disabled=true;$('cal').disabled=true;
+}
+$('go').onclick=start;$('stop').onclick=stop;$('cal').onclick=calibrate;
+$('lg').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['time,event\n'+LOG.join('\n')],{type:'text/csv'}));
+  a.download='drowsiness_log.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+document.addEventListener('visibilitychange',async()=>{
+  if(run&&document.visibilityState==='visible'){try{wl=await navigator.wakeLock.request('screen')}catch(e){}}
+});
+</script>
+</body>
+</html>
