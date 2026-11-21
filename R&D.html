@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07090d">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Driver Drowsiness Detection</title>
+<style>
+:root{--bg:#07090d;--p1:#0f141b;--p2:#151b24;--ln:#232c39;--tx:#e8edf3;--mu:#8a96a8;--ok:#22c55e;--info:#38bdf8;--warn:#f59e0b;--alarm:#ef4444;--pur:#a855f7;--cal:#3b82f6;--acc:#64748b}
+body[data-s=ok]{--acc:var(--ok)}body[data-s=cal]{--acc:var(--cal)}body[data-s=warn]{--acc:var(--warn)}body[data-s=alarm]{--acc:var(--alarm)}body[data-s=pur]{--acc:var(--pur)}body[data-s=info]{--acc:var(--info)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;min-height:100dvh}
+button{font:inherit;color:inherit;cursor:pointer;border:0;border-radius:10px}
+button:disabled{opacity:.4;cursor:default}
+input[type=range]{width:100%;accent-color:var(--cal)}
+select{font:inherit;color:var(--tx);background:var(--p2);border:1px solid var(--ln);border-radius:8px;padding:6px 8px}
+.view{display:none}
+body.mode-test #test{display:block}
+body.mode-final #final{display:flex}
+.btn{padding:10px 16px;font-weight:700;font-size:.92rem;background:var(--p2);border:1px solid var(--ln)}
+.btn.go{background:#1f8f46;border-color:#1f8f46}.btn.cal{background:#2563eb;border-color:#2563eb}.btn.stop{background:#c0392b;border-color:#c0392b}.btn.ghost{background:transparent}
+.mini{padding:3px 8px;font-size:.72rem;background:var(--p2);border:1px solid var(--ln);border-radius:6px;font-weight:600}
+.seg{display:inline-flex;background:var(--p2);border:1px solid var(--ln);border-radius:10px;padding:3px}
+.seg button{padding:6px 14px;font-weight:700;font-size:.85rem;background:transparent;color:var(--mu)}
+.seg button.on{background:var(--cal);color:#fff}
+
+/* ---------- TESTING ---------- */
+#test{padding:10px;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));max-width:1400px;margin:0 auto}
+.t-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.t-title b{font-size:1.02rem;letter-spacing:.02em}
+.tag{margin-left:8px;font-size:.65rem;font-weight:800;background:var(--warn);color:#000;padding:2px 6px;border-radius:5px;vertical-align:middle}
+.t-grid{display:grid;grid-template-columns:1fr;gap:10px}
+@media(min-width:980px){.t-grid{grid-template-columns:minmax(0,1.12fr) minmax(330px,.88fr)}}
+.t-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.t-bar{display:flex;gap:8px;flex-wrap:wrap}
+.vbox{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:12px;overflow:hidden;border:2px solid var(--acc);transition:border-color .2s}
+.vbox video,.vbox canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transform:scaleX(-1)}
+.vbox .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mu);font-size:.9rem;text-align:center;padding:20px}
+.hud{position:absolute;left:8px;top:6px;font:600 .7rem ui-monospace,Menlo,monospace;color:#cfe;text-shadow:0 1px 2px #000;pointer-events:none;white-space:pre}
+.card{background:var(--p1);border:1px solid var(--ln);border-radius:12px;padding:10px 12px}
+.card-h,summary{font-weight:700;font-size:.85rem;color:#cbd5e1;display:flex;align-items:center;justify-content:space-between;gap:8px}
+summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}
+summary::after{content:"▸";color:var(--mu)}details[open]>summary::after{content:"▾"}
+details>*:not(summary){margin-top:10px}
+.status{background:var(--p1);border:1px solid var(--ln);border-left:6px solid var(--acc);border-radius:12px;padding:10px 14px}
+.st-t{font-size:1.55rem;font-weight:800;color:var(--acc);letter-spacing:.02em}
+.st-s{font-size:.85rem;color:var(--mu);min-height:1.2em}
+.scorebar{position:relative;height:18px;background:var(--p2);border-radius:9px;margin-top:8px;overflow:hidden}
+.scorebar>div{height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--warn) 60%,var(--alarm));transition:width .3s}
+.scorebar span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;text-shadow:0 1px 2px #000}
+#chart{width:100%;height:170px;display:block;margin-top:6px}
+.legend{font-weight:500;font-size:.66rem;color:var(--mu)}
+.legend i{display:inline-block;width:10px;height:3px;margin:0 3px 2px 8px;vertical-align:middle}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+@media(min-width:620px){.metrics{grid-template-columns:repeat(5,1fr)}}
+.m{background:var(--p1);border:1px solid var(--ln);border-radius:8px;padding:6px 4px;text-align:center;min-width:0}
+.m small{display:block;font-size:.62rem;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m b{font-size:.98rem;font-variant-numeric:tabular-nums}
+.m.hot b{color:var(--alarm)}
+.evlog{max-height:190px;overflow:auto;font:.72rem/1.45 ui-monospace,Menlo,monospace;color:#cbd5e1;margin-top:6px}
+.evlog div{border-bottom:1px solid #1a212c;padding:1px 0}.evlog .w{color:var(--warn)}.evlog .a{color:#ff7b7b}.evlog .g{color:#7ee2a0}
+.sens .big{display:flex;align-items:center;gap:10px;margin-top:8px}
+.sens .big b{font-size:1.6rem;min-width:2ch;text-align:center;color:var(--cal)}
+.sens .ends{display:flex;justify-content:space-between;font-size:.68rem;color:var(--mu)}
+.eff{font-size:.7rem;color:var(--mu);margin-top:6px;line-height:1.45}
+.grp{font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.08em;margin:10px 0 4px}
+.tgrid{display:grid;grid-template-columns:1fr;gap:2px 12px}
+@media(min-width:520px){.tgrid{grid-template-columns:1fr 1fr}}
+.sw{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:.8rem;cursor:pointer;user-select:none;min-width:0}
+.sw input{display:none}
+.sw .sl{flex:0 0 34px;height:20px;border-radius:10px;background:#334155;position:relative;transition:.15s}
+.sw .sl::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#cbd5e1;transition:.15s}
+.sw input:checked+.sl{background:var(--ok)}.sw input:checked+.sl::after{left:16px;background:#fff}
+.sw .lb{min-width:0}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:2px 10px;align-items:center;padding:4px 0;border-bottom:1px solid #18202b}
+.prow label{font-size:.76rem}.prow output{font:600 .74rem ui-monospace,monospace;text-align:right;color:#cbd5e1}
+.prow input{grid-column:1/3}
+.prow .ev{grid-column:1/3;font-size:.64rem;color:var(--mu);margin-top:-2px}
+.presets,.simb,.datab{display:flex;flex-wrap:wrap;gap:6px}
+.presets button,.simb button,.datab button{padding:7px 10px;font-size:.78rem;font-weight:600;background:var(--p2);border:1px solid var(--ln)}
+.presets button.on{border-color:var(--cal);background:#16233b}
+.simb button:active{background:#243042}
+textarea{width:100%;min-height:90px;background:var(--p2);color:var(--tx);border:1px solid var(--ln);border-radius:8px;font:.72rem ui-monospace,monospace;padding:6px}
+.tips{font-size:.78rem;line-height:1.5;color:#cbd5e1;padding-left:16px}
+.tips li{margin:3px 0}
+.msg{font-size:.8rem;color:#fbbf24;min-height:1em;text-align:center}
+.unit{text-align:center;font-size:.72rem;color:var(--mu);margin:14px 0 6px;letter-spacing:.12em}
+.rec{color:var(--alarm);font-weight:800}
+
+/* ---------- FINAL ---------- */
+#final{min-height:100vh;min-height:100dvh;flex-direction:column;padding:max(10px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+  background:radial-gradient(900px 520px at 50% 38%,color-mix(in srgb,var(--acc) 20%,transparent),transparent 70%),var(--bg);transition:background .35s}
+.f-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{font-size:.82rem;font-weight:800;letter-spacing:.14em;color:#cbd5e1;text-transform:uppercase}
+.brand small{display:block;font-size:.62rem;color:var(--mu);letter-spacing:.2em;font-weight:600}
+.f-acts{display:flex;gap:6px}
+.ib{width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid var(--ln);border-radius:12px}
+.ib svg{width:22px;height:22px}
+.f-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:10px 0}
+@media(orientation:landscape) and (min-width:640px){.f-main{flex-direction:row;gap:40px}}
+.ring{position:relative;width:min(74vw,56vh,340px);aspect-ratio:1}
+@media(orientation:landscape) and (min-width:640px){.ring{width:min(42vw,62vh,360px)}}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .tr{fill:none;stroke:#18202b;stroke-width:12}
+.ring .ar{fill:none;stroke:var(--acc);stroke-width:12;stroke-linecap:round;transition:stroke-dashoffset .5s,stroke .3s;filter:drop-shadow(0 0 8px color-mix(in srgb,var(--acc) 70%,transparent))}
+.ring .in{position:absolute;inset:14%;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px}
+.ring .ico{width:28%;color:var(--acc)}
+.ring .ico svg{width:100%;height:auto;transform:none}
+#fSt{font-size:clamp(1.05rem,min(6.4vw,6.2vh),2.3rem);font-weight:900;letter-spacing:.03em;color:var(--acc);line-height:1.05}
+#fSub{font-size:clamp(.68rem,min(3vw,2.6vh),.92rem);color:#cbd5e1;max-width:88%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#fLvl{font-size:.68rem;color:var(--mu);letter-spacing:.14em;text-transform:uppercase}
+.f-side{display:flex;flex-direction:column;gap:12px;width:min(100%,460px)}
+.banner{display:none;align-items:center;gap:12px;background:linear-gradient(90deg,#3a2606,#2a1d07);border:1px solid #7c5410;border-radius:14px;padding:12px 14px}
+.banner.on{display:flex}
+.banner b{display:block;font-size:.95rem}.banner span{font-size:.78rem;color:#f5d38b}
+.banner .cup{width:36px;height:36px;color:var(--warn);flex:0 0 36px}
+.banner button{margin-left:auto;background:transparent;color:#f5d38b;font-size:1.2rem;padding:4px 8px}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{background:rgba(255,255,255,.04);border:1px solid var(--ln);border-radius:12px;padding:8px 6px;text-align:center}
+.chip small{display:block;font-size:.62rem;color:var(--mu);letter-spacing:.08em;text-transform:uppercase}
+.chip b{font-size:1.02rem;font-variant-numeric:tabular-nums}
+.pv{display:flex;align-items:center;gap:12px}
+.pv:not(.on){position:fixed;left:0;top:0;width:2px;height:2px;overflow:hidden;opacity:.01;pointer-events:none}
+#fPrev{position:relative;width:92px;height:92px;border-radius:50%;overflow:hidden;border:3px solid var(--acc);background:#000;flex:0 0 92px}
+#fPrev video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.pv .pvt{font-size:.75rem;color:var(--mu);line-height:1.4}
+.f-foot{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap}
+.f-foot .main{min-width:180px;padding:15px 26px;font-size:1.05rem;font-weight:800;border-radius:16px;background:#1f8f46}
+.f-foot .main.stop{background:#b42d24}
+.f-foot .sec{padding:15px 18px;font-weight:700;border-radius:16px;background:rgba(255,255,255,.07);border:1px solid var(--ln)}
+#fMsg{margin-top:6px}
+#flash{position:fixed;inset:0;pointer-events:none;display:none;align-items:center;justify-content:center;flex-direction:column;z-index:40;background:rgba(220,20,20,.55)}
+#flash.on{display:flex;animation:fl .7s infinite}
+#flash b{font-size:clamp(2.4rem,13vw,7rem);font-weight:900;color:#fff;text-shadow:0 4px 30px #000;letter-spacing:.03em}
+#flash span{font-size:clamp(1rem,4vw,1.6rem);color:#fff;font-weight:700}
+body.mode-test #flash.on{animation:fl2 .7s infinite;background:none}body.mode-test #flash b,body.mode-test #flash span{display:none}
+@keyframes fl2{0%,100%{box-shadow:inset 0 0 0 10px rgba(239,68,68,.9)}50%{box-shadow:inset 0 0 0 4px rgba(239,68,68,.3)}}
+@keyframes fl{0%,100%{background:rgba(220,20,20,.62)}50%{background:rgba(120,0,0,.25)}}
+.ov{position:fixed;inset:0;z-index:50;background:rgba(5,7,10,.88);display:none;align-items:center;justify-content:center;padding:20px}
+.ov.on{display:flex}
+#calOv{pointer-events:none;background:rgba(5,7,10,.72)}
+.ovc{background:var(--p1);border:1px solid var(--ln);border-radius:18px;padding:22px;max-width:420px;width:100%;text-align:center}
+.ovc h2{font-size:1.15rem;margin-bottom:6px}.ovc p{font-size:.86rem;color:#cbd5e1;line-height:1.5}
+.pbar{height:8px;background:var(--p2);border-radius:4px;overflow:hidden;margin-top:14px}.pbar div{height:100%;width:0;background:var(--cal);transition:width .2s}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:45;background:var(--p1);border-top:1px solid var(--ln);border-radius:18px 18px 0 0;padding:16px 18px max(18px,env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s;max-width:560px;margin:0 auto}
+.sheet:not(.on){visibility:hidden;transition:transform .25s,visibility 0s .25s}
+.sheet.on{transform:none}
+.sheet h3{font-size:.95rem;margin-bottom:8px;display:flex;justify-content:space-between}
+.srow{padding:8px 0;border-bottom:1px solid var(--ln);font-size:.85rem}
+.srow .lbl{display:flex;justify-content:space-between;margin-bottom:6px}
+</style>
+</head>
+<body class="mode-test" data-s="idle">
+<noscript>JavaScript is required.</noscript>
+
+<!-- =================== TESTING MODE =================== -->
+<section id="test" class="view">
+  <header class="t-head">
+    <div class="t-title"><b>Mil Dvr Drowsiness Detection Sys</b><span class="tag">TESTING</span></div>
+    <div class="seg"><button data-mode="test" class="on">Testing</button><button data-mode="final">Final product</button></div>
+  </header>
+  <div class="t-grid">
+    <div class="t-col">
+      <div class="t-bar">
+        <button id="tStart" class="btn go">▶ Start camera</button>
+        <button id="tCal" class="btn cal" disabled>🎯 Calibrate</button>
+        <button id="tStop" class="btn stop" disabled>⏹ Stop</button>
+        <button id="tDemo" class="btn ghost">🧪 Demo (no camera)</button>
+      </div>
+      <div class="msg" id="tMsg"></div>
+      <div id="tVideoBox" class="vbox"><div class="ph" id="ph">Camera off. Press <b>&nbsp;Start camera&nbsp;</b> or try the demo.</div><canvas id="ov"></canvas><div class="hud" id="hud"></div></div>
+      <div class="status"><div class="st-t" id="tSt">READY</div><div class="st-s" id="tSub">Press Start</div>
+        <div class="scorebar"><div id="tScoreFill"></div><span id="tScoreTxt">Fatigue score 0 / 100</span></div></div>
+      <div class="card"><div class="card-h">Live signals · 20 s<span class="legend"><i style="background:#22c55e"></i>eye open<i style="background:#ef4444"></i>closed thr<i style="background:#f59e0b"></i>P80<i style="background:#c084fc"></i>jaw<i style="background:#60a5fa"></i>pitch<i style="background:#22d3ee"></i>gaze yaw</span></div><canvas id="chart"></canvas></div>
+      <div class="metrics" id="metrics"></div>
+      <div class="card"><div class="card-h">Event log <span><button id="logDl" class="mini">⬇ CSV</button> <button id="logClr" class="mini">clear</button></span></div><div id="evlog" class="evlog"></div></div>
+    </div>
+    <div class="t-col">
+      <div class="card sens">
+        <div class="card-h">Sensitivity <span class="legend">applies to all thresholds &amp; timings</span></div>
+        <div class="big"><span style="font-size:.75rem;color:var(--mu)">Low</span><input id="sens" type="range" min="1" max="10" step="1"><span style="font-size:.75rem;color:var(--mu)">High</span><b id="sensV">5</b></div>
+        <div class="eff" id="effTxt"></div>
+      </div>
+      <div class="card"><div class="card-h">Presets</div><div class="presets" id="presets" style="margin-top:8px"></div></div>
+      <div class="card"><div class="card-h">Features <span><button id="fAllOn" class="mini">all on</button> <button id="fDef" class="mini">defaults</button></span></div><div id="toggles"></div></div>
+      <details class="card"><summary>Fine tuning (values at sensitivity 5)</summary><div id="params"></div><button id="pReset" class="mini" style="margin-top:8px">Reset fine tuning</button></details>
+      <details class="card"><summary>Performance</summary><div id="perfBox"></div></details>
+      <details class="card" open><summary>Simulate events</summary>
+        <p class="eff" style="margin-top:6px">Injects signals into the live (or demo) stream so you can test alarms without actually closing your eyes.</p>
+        <div class="simb" style="margin-top:6px">
+          <button data-sim="blink">Long blink 0.7 s</button><button data-sim="micro">Microsleep 1.6 s</button><button data-sim="sleep">Sleep 4 s</button>
+          <button data-sim="yawn">Yawn</button><button data-sim="nod">Head nod</button><button data-sim="away">Look away 4.5 s</button>
+          <button data-sim="phone">Look down 4 s</button><button data-sim="noface">No face 4 s</button><button data-sim="drowsy">Drowsy minute</button>
+          <button data-sim="test">🔊 Test sounds</button>
+        </div>
+      </details>
+      <details class="card"><summary>Data &amp; settings</summary>
+        <div class="datab">
+          <button id="recBtn">⏺ Record frames</button><button id="recDl" disabled>⬇ Recording CSV</button>
+          <button id="setExp">Export settings</button><button id="setImp">Import settings</button><button id="setAll">Reset everything</button>
+        </div>
+        <textarea id="setTxt" placeholder="Settings JSON appears here (export) — or paste JSON and press Import"></textarea>
+      </details>
+      <details class="card"><summary>Testing tips</summary>
+        <ul class="tips">
+          <li><b>MacBook Air M4:</b> turn <b>Center Stage off</b> (menu bar → green camera icon / Control Center → Video Effects) — its auto-zoom changes face size and head pose and spoils calibration.</li>
+          <li>Calibrate looking where you would look at the road. Enable <b>Two-step calibration</b> to also measure your closed-eye level (most accurate).</li>
+          <li>Use the <b>Record frames</b> button, reproduce a problem, and download the CSV to see exactly what each signal did.</li>
+          <li>Compare features one at a time: watch the chart and the event log while toggling.</li>
+          <li><b>Android Chrome:</b> the camera only works on <b>HTTPS</b> or <b>localhost</b>. Host the file on GitHub Pages/Netlify, or use <code>adb reverse tcp:8000 tcp:8000</code> and open <code>http://localhost:8000</code> on the phone.</li>
+          <li>Offline: put <code>vision_bundle.mjs</code>, the <code>wasm</code> folder and <code>face_landmarker.task</code> in a <code>mediapipe/</code> folder next to this file and open it with <code>?local</code>.</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+  <footer class="unit">8 SIG BN || 24 INF DIV</footer>
+</section>
+
+<!-- =================== FINAL PRODUCT MODE =================== -->
+<section id="final" class="view">
+  <header class="f-head">
+    <div class="brand">Mil Dvr Drowsiness Detection Sys<small>8 SIG BN || 24 INF DIV</small></div>
+    <div class="f-acts">
+      <button class="ib" id="fFull" title="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="ib" id="fGear" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    </div>
+  </header>
+  <main class="f-main">
+    <div class="ring">
+      <svg viewBox="0 0 240 240"><circle class="tr" cx="120" cy="120" r="104"/><circle class="ar" id="fArc" cx="120" cy="120" r="104" stroke-dasharray="653.5" stroke-dashoffset="653.5"/></svg>
+      <div class="in"><div class="ico" id="fIco"></div><div id="fSt">READY</div><div id="fSub">Press Start to begin monitoring</div><div id="fLvl"></div></div>
+    </div>
+    <div class="f-side">
+      <div class="banner" id="fBanner"><div class="cup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8zM6 2v3M10 2v3M14 2v3"/></svg></div><div><b>Driver drowsiness detected</b><span id="fBanSub">Take a break</span></div><button id="fBanX" title="Snooze 10 min">✕</button></div>
+      <div class="chips">
+        <div class="chip"><small>Eyes</small><b id="cEye">—</b></div>
+        <div class="chip"><small>Head</small><b id="cHead">—</b></div>
+        <div class="chip"><small>Sleepiness</small><b id="cAlert">—</b></div>
+        <div class="chip"><small>Blinks/min</small><b id="cBlink">—</b></div>
+        <div class="chip"><small>Yawns 10 min</small><b id="cYawn">—</b></div>
+        <div class="chip"><small>Drive time</small><b id="cTime">0:00</b></div>
+      </div>
+      <div class="pv" id="fPv"><div id="fPrev"></div><div class="pvt">Camera preview<br><span id="fPvTxt">Keep your face in view</span></div></div>
+    </div>
+  </main>
+  <footer>
+    <div class="f-foot">
+      <button class="main" id="fStart">▶ START</button>
+      <button class="sec" id="fCal" disabled>🎯 Recalibrate</button>
+    </div>
+    <div class="msg" id="fMsg"></div>
+  </footer>
+</section>
+
+<video id="v" playsinline muted autoplay></video>
+<div id="flash"><b id="flT">WAKE UP!</b><span id="flS"></span></div>
+<div class="ov" id="loader"><div class="ovc"><h2 id="ldT">Loading AI engine…</h2><p id="ldS">First start downloads ~19 MB (cached afterwards).</p><div class="pbar"><div id="ldP"></div></div></div></div>
+<div class="ov" id="calOv"><div class="ovc"><h2 id="calT">Calibrating</h2><p id="calS">Sit normally, look at the road, eyes open</p><div class="pbar"><div id="calP"></div></div></div></div>
+<div class="sheet" id="sheet">
+  <h3>Settings <button class="mini" id="shX">close</button></h3>
+  <div class="srow"><div class="lbl"><span>Sensitivity</span><b id="shSensV">5</b></div><input id="shSens" type="range" min="1" max="10" step="1"></div>
+  <div class="srow"><div class="lbl"><span>Alarm volume</span><b id="shVolV">80%</b></div><input id="shVol" type="range" min="0.1" max="1" step="0.05"></div>
+  <div class="srow"><label class="sw"><input type="checkbox" id="shPrev"><span class="sl"></span><span class="lb">Show camera preview</span></label></div>
+  <div class="srow"><label class="sw"><input type="checkbox" id="shVoice"><span class="sl"></span><span class="lb">Voice prompts</span></label></div>
+  <div class="srow" style="border:0"><button class="btn" id="shTest" style="width:100%">Open testing mode</button></div>
+</div>
+
+<script>
+'use strict';
+/* ============================ CONFIG ============================ */
+const MP_VERSIONS=['1.2.3','0.10.34'];   // 1.x = newest; 0.10.34 = last release without usage-metrics code
+const QS=new URLSearchParams(location.search), LOCAL=QS.has('local');
+const CFG={
+  sources:ver=>LOCAL?[{bundle:'./mediapipe/vision_bundle.mjs',wasm:'./mediapipe/wasm'}]:
+    [`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${ver}`,`https://unpkg.com/@mediapipe/tasks-vision@${ver}`].map(b=>({bundle:b+'/vision_bundle.mjs',wasm:b+'/wasm'})),
+  MODEL: LOCAL?'./mediapipe/face_landmarker.task':'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+  METRICS_HOSTS:['odml.pa.googleapis.com'],
+  STORE:'dds2.settings'
+};
+
+/* ============================ SETTINGS SCHEMA ============================ */
+// [key, group, label, default, hint]
+const FEAT=[
+ ['eyeAlarm','Detection','Eye-closure alarm (microsleep / sleep)',1,'Alarm when eyes stay closed (Euro NCAP: microsleep 1-2 s, sleep 3 s)'],
+ ['perclos','Detection','PERCLOS fatigue (P80)',1,'% of time eyes are ≥80% closed over a sliding window'],
+ ['blinks','Detection','Blink analysis (long/slow blinks)',1,'Drowsy blinks get longer and slower'],
+ ['yawn','Detection','Yawn detection',1,'Counts yawns; repeated yawning raises fatigue'],
+ ['nod','Detection','Head-nod (nodding off)',1,'Fast head drop + recovery with drooping eyes'],
+ ['droop','Detection','Head droop / tilt',1,'Head hanging down or tilted for a while'],
+ ['distraction','Detection','Eyes-off-road (long glance)',1,'Looking away longer than the limit (EU ADDW: 3.5 s)'],
+ ['vats','Detection','Repeated glances (10 s in 30 s)',1,'Euro NCAP short-distraction rule'],
+ ['noDriver','Detection','No-driver alarm',1,'Face not visible'],
+ ['cameraCheck','Detection','Camera blocked / low-light check',1,'Warns when monitoring is not possible'],
+ ['fatigueScore','Detection','Combined fatigue score',1,'Fuses PERCLOS, blinks, yawns, nods and microsleeps'],
+ ['useBlend','Accuracy','Fuse AI blink score with EAR',1,'Combines geometric eye-aspect-ratio with MediaPipe eyeBlink blendshape'],
+ ['ear3d','Accuracy','3D eye geometry (pose-robust EAR)',1,'Uses landmark depth so head turns distort EAR less'],
+ ['eyeWeight','Accuracy','Trust the more visible eye',1,'When the head turns, weight the eye facing the camera'],
+ ['matrix','Accuracy','Head pose from 3D transform',1,'Off = estimate pose from landmarks'],
+ ['gazeEyes','Accuracy','Use eye gaze (not just head)',1,'Adds eye direction to head direction for off-road detection'],
+ ['poseComp','Accuracy','Look-down compensation',1,'Looking down makes eyes look smaller - lowers the closed threshold a little'],
+ ['smoothing','Accuracy','One-Euro signal smoothing',1,'Removes jitter without adding lag'],
+ ['adaptBase','Accuracy','Adaptive open-eye baseline',1,'Slowly follows lighting/pose drift while you are alert'],
+ ['lowLight','Accuracy','Low-light boost (auto)',1,'Brightens dark frames before detection'],
+ ['autoCalib','Calibration','Auto-calibrate on start',1,''],
+ ['closedCalib','Calibration','Two-step calibration (eyes-closed step)',0,'Also measures your closed-eye level: best accuracy'],
+ ['sound','Alerts','Sound',1,''],['voice','Alerts','Voice prompts',1,''],['vibrate','Alerts','Vibration (Android)',1,''],
+ ['escalate','Alerts','Escalate when eyes stay closed',1,'Faster, louder alarm after the sleep threshold'],
+ ['flash','Alerts','Full-screen flash on alarm',1,''],
+ ['blendModel','Performance','AI blendshape model (eye/gaze/jaw)',1,'Off saves ~1-3 ms/frame; falls back to geometry'],
+ ['blockMetrics','Privacy','Block MediaPipe usage metrics',1,'MediaPipe 1.x reports performance/usage metrics to Google (never video). This blocks only that request.'],
+ ['overlay','Performance','Draw landmark overlay',1,''],['chart','Performance','Live signal chart',1,''],
+ ['adaptiveFps','Performance','Adaptive frame rate',1,'Lowers FPS automatically if the device is slow'],
+ ['rvfc','Performance','Sync to camera frames (rVFC)',1,'requestVideoFrameCallback: never processes the same frame twice']
+];
+// [key, label, min, max, step, default, unit]
+const PARAM=[
+ ['closeThr','Eye counted closed below (openness)',.1,.6,.01,.30,'%'],
+ ['hyst','Re-open hysteresis',.02,.2,.01,.08,'%'],
+ ['warnMs','"Eyes closing" warning after',300,1500,50,700,'ms'],
+ ['microMs','Microsleep alarm after',600,2500,50,1200,'ms'],
+ ['sleepMs','Sleep alarm (escalated) after',1500,5000,100,3000,'ms'],
+ ['unrespMs','Unresponsive siren after',4000,10000,500,6000,'ms'],
+ ['holdMs','Keep alarm after eyes open',0,4000,250,1500,'ms'],
+ ['longBlinkMs','Long blink ≥',300,800,25,500,'ms'],
+ ['perclosLevel','PERCLOS closure level',.6,.9,.05,.8,'%'],
+ ['perclosLimit','PERCLOS warning above',.05,.35,.01,.15,'%'],
+ ['perclosWin','PERCLOS window',30,180,10,60,'s'],
+ ['earWeight','EAR weight vs AI blink',0,1,.05,.5,''],
+ ['smoothCut','Smoothing min cutoff',.5,6,.25,2,'Hz'],
+ ['yawnJaw','Yawn: jaw open ≥',.3,.9,.01,.55,''],
+ ['yawnMar','Yawn: mouth ratio rise ≥ (no AI)',.15,.7,.01,.35,''],
+ ['yawnMs','Yawn: min duration',800,4000,100,1500,'ms'],
+ ['yawnCluster','Yawns in 10 min → warning',2,6,1,3,''],
+ ['distYaw','Off-road: head+eye turn ≥',15,50,1,28,'°'],
+ ['distDown','Off-road: look down/up ≥',10,40,1,20,'°'],
+ ['distMs','Off-road warning after',1500,6000,100,3000,'ms'],
+ ['vatsSec','Glance budget in 30 s',5,20,1,10,'s'],
+ ['nodDeg','Nod depth',8,30,1,14,'°'],
+ ['droopDeg','Droop: head down ≥',10,40,1,22,'°'],
+ ['rollDeg','Droop: head tilt ≥',15,45,1,25,'°'],
+ ['droopMs','Droop warning after',800,4000,100,1500,'ms'],
+ ['noFaceMs','No-driver warning after',1000,6000,250,2000,'ms'],
+ ['fatigueThr','Fatigue score warning ≥',30,90,1,60,''],
+ ['calibMs','Calibration time',2000,8000,250,3500,'ms']
+];
+const PERF_DEF={maxFps:24,minFps:8,res:'640x480',delegate:'auto',detConf:.5,mpVer:'1.2.3'};
+const PRESETS={
+ balanced:{n:'Balanced',sens:5,f:{},p:{},perf:{}},
+ night:{n:'Night / long drive',sens:7,f:{closedCalib:1},p:{fatigueThr:50},perf:{}},
+ quiet:{n:'Fewer false alarms',sens:3,f:{vats:0},p:{distMs:3500},perf:{}},
+ lite:{n:'Low-end phone',sens:5,f:{overlay:0,chart:0,blendModel:1},p:{},perf:{maxFps:12,minFps:5,res:'480x360'}},
+ max:{n:'Max accuracy',sens:5,f:{closedCalib:1},p:{},perf:{maxFps:30,res:'640x480'}}
+};
+const defF=()=>Object.fromEntries(FEAT.map(a=>[a[0],!!a[3]]));
+const defP=()=>Object.fromEntries(PARAM.map(a=>[a[0],a[5]]));
+let S={sens:5,f:defF(),p:defP(),perf:{...PERF_DEF},vol:.8,preview:true,mode:'test',preset:'balanced'};
+try{const j=JSON.parse(localStorage.getItem(CFG.STORE)||'null');if(j){S={...S,...j,f:{...defF(),...(j.f||{})},p:{...defP(),...(j.p||{})},perf:{...PERF_DEF,...(j.perf||{})}}}}catch(e){}
+let saveT=0;function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(CFG.STORE,JSON.stringify(S))}catch(e){}},250)}
+
+/*ENGINE_START*/
+/* ============================ DETECTION ENGINE (no DOM) ============================ */
+const Engine=(()=>{
+const clamp=(x,a,b)=>x<a?a:x>b?b:x;
+const quant=(a,f)=>{if(!a.length)return NaN;const s=Float64Array.from(a).sort();return s[Math.round((s.length-1)*clamp(f,0,1))]};
+const wrap=a=>((a%360)+540)%360-180;
+class OneEuro{constructor(mc=2,b=.5,dc=1){this.mc=mc;this.b=b;this.dc=dc;this.x=null}
+  reset(){this.x=null}
+  f(x,t){if(this.x===null){this.x=x;this.dx=0;this.t=t;return x}
+    const dt=Math.max(.001,(t-this.t)/1000);this.t=t;const al=c=>{const r=2*Math.PI*c*dt;return r/(r+1)};
+    this.dx+=al(this.dc)*((x-this.x)/dt-this.dx);this.x+=al(this.mc+this.b*Math.abs(this.dx))*(x-this.x);return this.x}}
+// index 0 = subject's LEFT eye, 1 = subject's RIGHT eye (MediaPipe topology)
+const EYES=[{c:[362,263],v:[[385,380],[386,374],[387,373]],ring:[263,249,390,373,374,380,381,382,362,398,384,385,386,387,388,466],iris:473},
+            {c:[33,133],v:[[160,144],[159,145],[158,153]],ring:[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246],iris:468}];
+let BSI=null;
+const R2D=57.29578;
+function extract(res,W,H,o){
+  const lm=res&&res.faceLandmarks&&res.faceLandmarks[0];
+  if(!lm||lm.length<468)return {face:false};
+  const z=o.ear3d?W:0;
+  const d=(a,b,zz)=>{const p=lm[a],q=lm[b],dx=(p.x-q.x)*W,dy=(p.y-q.y)*H,dz=(p.z-q.z)*zz;return Math.sqrt(dx*dx+dy*dy+dz*dz)};
+  const ear=[],ew=[];
+  for(const e of EYES){let s=0;for(const [a,b] of e.v)s+=d(a,b,z);ear.push(s/(3*(d(e.c[0],e.c[1],z)||1e-6)));ew.push(d(e.c[0],e.c[1],0))}
+  const fr={face:true,ear,ew,iod:d(33,263,0),mar:d(13,14,0)/(d(78,308,0)||1e-6),bs:null,jaw:null,eyeYaw:null,eyePitch:null};
+  const cats=res.faceBlendshapes&&res.faceBlendshapes[0]&&res.faceBlendshapes[0].categories;
+  if(cats&&cats.length>40){
+    if(!BSI||!cats[BSI.eyeBlinkLeft]||cats[BSI.eyeBlinkLeft].categoryName!=='eyeBlinkLeft'){BSI={};cats.forEach((c,i)=>BSI[c.categoryName]=i)}
+    const g=n=>{const i=BSI[n];return i==null?0:cats[i].score};
+    fr.bs=[g('eyeBlinkLeft'),g('eyeBlinkRight')];fr.jaw=g('jawOpen');
+    // + = toward subject's left / downward
+    fr.eyeYaw=((g('eyeLookOutLeft')+g('eyeLookInRight'))-(g('eyeLookInLeft')+g('eyeLookOutRight')))/2*35;
+    fr.eyePitch=((g('eyeLookDownLeft')+g('eyeLookDownRight'))-(g('eyeLookUpLeft')+g('eyeLookUpRight')))/2*35;
+  }
+  const mt=o.matrix&&res.facialTransformationMatrixes&&res.facialTransformationMatrixes[0];
+  if(mt&&mt.data&&mt.data.length>=16){
+    const m=mt.data,r=(i,j)=>m[j*4+i]; // column-major
+    fr.yaw=Math.asin(clamp(-r(2,0),-1,1))*R2D;fr.pitch=Math.atan2(r(2,1),r(2,2))*R2D;fr.roll=Math.atan2(r(1,0),r(0,0))*R2D;fr.poseSrc='matrix';
+  }else{
+    const P=i=>[lm[i].x*W,lm[i].y*H,lm[i].z*W],a=P(33),b=P(263),c=P(10),e=P(152);
+    const rv=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],dv=[e[0]-c[0],e[1]-c[1],e[2]-c[2]];
+    const n=[dv[1]*rv[2]-dv[2]*rv[1],dv[2]*rv[0]-dv[0]*rv[2],dv[0]*rv[1]-dv[1]*rv[0]];
+    fr.yaw=Math.atan2(n[0],-n[2])*R2D;fr.pitch=Math.atan2(n[1],-n[2])*R2D;fr.roll=-Math.atan2(rv[1],rv[0])*R2D;fr.poseSrc='landmarks';
+  }
+  return fr;
+}
+// sensitivity 1..10 -> effective parameters
+function effective(p,sens){
+  const s=clamp((sens-1)/9,0,1),m=s-.5,tk=Math.pow(2,-m),ak=Math.pow(2,-m*.6);
+  return {...p,s,tk,closeThr:clamp(p.closeThr+m*.16,.06,.75),warnMs:p.warnMs*tk,microMs:Math.max(450,p.microMs*tk),sleepMs:p.sleepMs*Math.sqrt(tk),
+    distMs:p.distMs*tk,droopMs:p.droopMs*tk,noFaceMs:p.noFaceMs*tk,perclosLimit:p.perclosLimit*tk,fatigueThr:clamp(p.fatigueThr-m*30,10,98),
+    yawnJaw:clamp(p.yawnJaw-m*.2,.2,.95),yawnMar:p.yawnMar*ak,yawnMs:p.yawnMs*Math.sqrt(tk),vatsSec:p.vatsSec*tk,
+    distYaw:p.distYaw*ak,distDown:p.distDown*ak,nodDeg:p.nodDeg*ak,droopDeg:p.droopDeg*ak,rollDeg:p.rollDeg*ak};
+}
+const DEF_BASE=()=>({earOpen:[.30,.30],earClosed:[.115,.115],bsOpen:[.08,.08],bsClosed:[.58,.58],jaw0:.03,mar0:.05,yaw0:0,pitch0:10,roll0:0,ey0:0,ep0:0,ok:false,closedOk:false,cal:null,quality:0});
+
+class DrowsyEngine{
+  constructor(){this.base=DEF_BASE();this.euro=new OneEuro();this.f={};this.P={};this.ev=[];this.reset()}
+  configure(f,p,sens){this.f=f;this.P=effective(p,sens);this.euro.mc=this.P.smoothCut;}
+  reset(keepBase){
+    if(!keepBase)this.base=DEF_BASE();
+    this.euro.reset();this.out={};this.ev=[];this.wasFat=false;this.lastT=null;this.t0=null;this.cal=null;
+    this.closed=false;this.closedAt=0;this.microCounted=false;this.sleepCounted=false;this.unrespCounted=false;this.holdUntil=0;this.lastClosure=0;
+    this.pq=[];this.pqh=0;this.pst=0;this.psc=0;this.pFat=false;
+    this.blinks=[];this.micro=[];this.yawns=[];this.nods=[];this.mouthAt=0;this.yawnCounted=false;this.yawnUntil=0;this.yFat=false;
+    this.ph=[];this.nodArmed=false;this.nodAt=0;this.nodMinO=1;this.droopAt=0;
+    this.offAt=0;this.onSince=0;this.distLatch=false;this.distOnAt=0;this.vq=[];this.vqh=0;this.vcum=0;this.vatsLatch=false;
+    this.noFaceAt=0;this.lostWhileClosed=false;this.luma=128;this.lowAt=0;this.blkAt=0;this.lowLight=false;this.blocked=false;
+    this.score=0;this.sFat=false;this.scoreT=0;this.adE=[[],[]];this.adB=[[],[]];this.adT=0;this.prevKey='';
+  }
+  drain(){const e=this.ev;this.ev=[];return e}
+  startCalib(t,closedStep){this.cal={phase:'settle',t0:t,closedStep:!!closedStep,open:[],closed:[],seen:0,frames:0}}
+  camInfo(luma,std,t){
+    this.luma=luma;this.lumaStd=std;
+    const low=luma<32,blk=(luma<10||std<3.5);
+    if(low){if(!this.lowAt)this.lowAt=t}else this.lowAt=0;
+    if(blk&&!this.out.face){if(!this.blkAt)this.blkAt=t}else this.blkAt=0;
+    const on=this.f.cameraCheck;
+    const nl=on&&this.lowAt&&t-this.lowAt>2000,nb=on&&this.blkAt&&t-this.blkAt>2000;
+    if(nl&&!this.lowLight)this.ev.push(['lowlight',luma]);if(nb&&!this.blocked)this.ev.push(['blocked',luma]);
+    this.lowLight=!!nl;this.blocked=!!nb;
+  }
+  _calFrame(fr,t){
+    const c=this.cal,P=this.P,el=t-c.t0,b=this.base,R=this.out;
+    if(c.phase==='settle'){if(el>=600){c.phase='open';c.t0=t}R.cal={phase:'open',p:0};return}
+    if(c.phase==='open'){
+      c.frames++;
+      if(fr&&fr.face){c.seen++;c.open.push({e0:fr.ear[0],e1:fr.ear[1],b0:fr.bs?fr.bs[0]:null,b1:fr.bs?fr.bs[1]:null,jaw:fr.jaw,mar:fr.mar,yaw:fr.yaw,pitch:fr.pitch,roll:fr.roll,ey:fr.eyeYaw,ep:fr.eyePitch})}
+      R.cal={phase:'open',p:clamp(el/P.calibMs,0,1)};
+      if(el>=P.calibMs){
+        const ok=this._finishOpen(t);
+        if(ok&&c.closedStep){c.phase='prep';c.t0=t;this.ev.push(['cal_close'])}else{this.cal=null;R.cal=null}
+      }
+      return;
+    }
+    if(c.phase==='prep'){R.cal={phase:'closed',p:0};if(el>=1000){c.phase='closed';c.t0=t}return}
+    if(c.phase==='closed'){
+      if(fr&&fr.face)c.closed.push({e0:fr.ear[0],e1:fr.ear[1],b0:fr.bs?fr.bs[0]:null,b1:fr.bs?fr.bs[1]:null});
+      R.cal={phase:'closed',p:clamp(el/1800,0,1)};
+      if(el>=1800){this._finishClosed();this.ev.push(['cal_open']);this.cal=null;R.cal=null}
+    }
+  }
+  _finishOpen(t){
+    const c=this.cal,b=this.base,o=c.open;
+    if(o.length<8||c.seen<c.frames*.5){this.ev.push(['cal_fail','face not seen enough']);this.cal=null;return false}
+    const col=k=>o.map(x=>x[k]).filter(x=>x!=null&&isFinite(x));
+    const e0=quant(col('e0'),.7),e1=quant(col('e1'),.7);
+    if(!(e0>.12&&e0<.6&&e1>.12&&e1<.6)){this.ev.push(['cal_fail','eye values out of range']);this.cal=null;return false}
+    const keep=o.filter(x=>x.e0>e0*.75&&x.e1>e1*.75);
+    const kc=k=>keep.map(x=>x[k]).filter(x=>x!=null&&isFinite(x));
+    b.earOpen=[e0,e1];
+    if(!b.closedOk)b.earClosed=[e0*.38,e1*.38];
+    const hasB=col('b0').length>4;
+    if(hasB){b.bsOpen=[quant(col('b0'),.3),quant(col('b1'),.3)];if(!b.closedOk)b.bsClosed=b.bsOpen.map(x=>Math.min(.78,x+.5))}
+    b.jaw0=quant(kc('jaw'),.5)||.03;b.mar0=quant(kc('mar'),.5)||.05;
+    b.yaw0=quant(kc('yaw'),.5);b.pitch0=quant(kc('pitch'),.5);b.roll0=quant(kc('roll'),.5);
+    b.ey0=quant(kc('ey'),.5)||0;b.ep0=quant(kc('ep'),.5)||0;
+    const sd=a=>{const m=a.reduce((x,y)=>x+y,0)/a.length;return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length)/m};
+    b.quality=Math.round(clamp(100*(c.seen/c.frames)*(1-clamp(sd(kc('e0'))*3,0,.6)),0,100));
+    b.ok=true;b.cal={earOpen:[...b.earOpen],bsOpen:[...b.bsOpen]};
+    this.euro.reset();this.score=0;this.pq=[];this.pqh=0;this.pst=0;this.psc=0;this.t0=t;
+    this.ev.push(['calibrated',`EAR ${e0.toFixed(3)}/${e1.toFixed(3)} · quality ${b.quality}%`]);
+    return true;
+  }
+  _finishClosed(){
+    const c=this.cal,b=this.base,o=c.closed.slice(Math.floor(c.closed.length*.25));
+    if(o.length<5){this.ev.push(['cal_closed_fail','face not seen']);return}
+    const e=[quant(o.map(x=>x.e0),.5),quant(o.map(x=>x.e1),.5)];
+    if(!(e[0]<b.earOpen[0]*.72&&e[1]<b.earOpen[1]*.72)){this.ev.push(['cal_closed_fail','eyes did not close enough']);return}
+    b.earClosed=e.map((x,i)=>Math.min(x,b.earOpen[i]-.06));
+    const bb=o.map(x=>x.b0).filter(x=>x!=null);
+    if(bb.length>4){const v=[quant(bb,.5),quant(o.map(x=>x.b1),.5)];b.bsClosed=v.map((x,i)=>Math.max(x,b.bsOpen[i]+.15))}
+    b.closedOk=true;this.ev.push(['cal_closed',`closed EAR ${e[0].toFixed(3)}/${e[1].toFixed(3)}`]);
+  }
+  _openness(fr){
+    const b=this.base,f=this.f,P=this.P,hasB=!!fr.bs&&f.useBlend;
+    const o=[0,1].map(i=>{
+      const oE=(fr.ear[i]-b.earClosed[i])/Math.max(.04,b.earOpen[i]-b.earClosed[i]);
+      if(!hasB)return clamp(oE,-.3,1.6);
+      const oB=(b.bsClosed[i]-fr.bs[i])/Math.max(.12,b.bsClosed[i]-b.bsOpen[i]);
+      return clamp(P.earWeight*oE+(1-P.earWeight)*oB,-.3,1.6);
+    });
+    let wl=.5;if(f.eyeWeight){const a=fr.ew[0]**2,c=fr.ew[1]**2;wl=a/((a+c)||1)}
+    return {o:o[0]*wl+o[1]*(1-wl),oL:o[0],oR:o[1],wl};
+  }
+  update(fr,t){
+    const f=this.f,P=this.P,R=this.out,b=this.base,ev=this.ev;
+    const dt=this.lastT==null?0:clamp(t-this.lastT,0,300);this.lastT=t;if(this.t0==null)this.t0=t;
+    R.t=t;R.face=!!(fr&&fr.face);R.monMs=t-this.t0;R.calibrated=b.ok;
+    if(!R.face){
+      if(!this.noFaceAt){this.noFaceAt=t;this.lostWhileClosed=this.closed;if(f.noDriver)ev.push(['driver_lost'])}
+      if(this.closed&&this.closedAt>0){this.closed=false;this.closedAt=0}
+      this.mouthAt=0;this.offAt=0;this.droopAt=0;this.nodArmed=false;this.distLatch=false;
+      R.noFaceMs=t-this.noFaceAt;R.closedMs=0;R.closed=false;R.offMs=0;R.droopMs=0;
+      if(this.cal)this._calFrame(null,t);
+      this._stats(t);return this._decide(t);
+    }
+    if(this.noFaceAt){if(t-this.noFaceAt>500)ev.push(['driver_back',t-this.noFaceAt]);this.noFaceAt=0}
+    R.noFaceMs=0;
+    // ---- eye openness ----
+    const op=this._openness(fr);
+    const oS=f.smoothing?this.euro.f(op.o,t):(this.euro.reset(),op.o);
+    Object.assign(R,{oRaw:op.o,o:oS,oL:op.oL,oR:op.oR,wl:op.wl,ear:fr.ear,bs:fr.bs,jaw:fr.jaw,mar:fr.mar,iod:fr.iod,poseSrc:fr.poseSrc});
+    // ---- head pose & gaze relative to calibrated neutral ----
+    const dp=fr.pitch-b.pitch0,dy=wrap(fr.yaw-b.yaw0),dr=wrap(fr.roll-b.roll0);
+    let gy=dy,gp=dp;
+    if(f.gazeEyes&&fr.eyeYaw!=null&&oS>.5){gy+=fr.eyeYaw-b.ey0;gp+=fr.eyePitch-b.ep0}
+    Object.assign(R,{yaw:fr.yaw,pitch:fr.pitch,roll:fr.roll,dy,dp,dr,gy,gp});
+    if(this.cal){this._calFrame(fr,t);if(this.cal){R.closed=false;R.closedMs=0;R.thr=P.closeThr;this._stats(t);return this._decide(t)}}
+    // ---- closed threshold (+ look-down compensation, head pitch only) ----
+    let thr=P.closeThr,comp=0;
+    if(f.poseComp&&b.ok){comp=clamp((dp-6)/24,0,1);thr*=1-.35*comp}
+    R.thr=thr;R.comp=comp;
+    // ---- closure state machine with hysteresis ----
+    if(!this.closed){if(oS<thr){this.closed=true;this.closedAt=t;this.microCounted=this.sleepCounted=this.unrespCounted=false}}
+    else if(oS>thr+P.hyst){
+      const dur=t-this.closedAt;this.closed=false;this.closedAt=0;
+      if(dur>=60){this.blinks.push({t,d:dur});
+        if(dur>=P.microMs){this.holdUntil=t+P.holdMs;this.lastClosure=dur;ev.push(['eyes_open',dur])}
+        else if(dur>=P.longBlinkMs&&f.blinks)ev.push(['long_blink',dur]);}
+    }
+    const cms=this.closed?t-this.closedAt:0;R.closed=this.closed;R.closedMs=cms;
+    const yawning=!!this.mouthAt&&t-this.mouthAt>350;R.yawning=yawning;
+    if(this.closed&&f.eyeAlarm){
+      if(cms>=P.microMs*(yawning?1.5:1)&&!this.microCounted){this.microCounted=true;this.micro.push(t);ev.push(['microsleep',cms])}
+      if(cms>=P.sleepMs&&!this.sleepCounted){this.sleepCounted=true;ev.push(['sleep',cms])}
+      if(cms>=P.unrespMs&&!this.unrespCounted){this.unrespCounted=true;ev.push(['unresponsive',cms])}
+    }
+    // ---- distraction (eyes off road) ----
+    const off=f.distraction&&b.ok&&!this.closed&&(Math.abs(gy)>P.distYaw||gp>P.distDown||gp<-P.distDown*1.1);
+    this.offRoad=off;
+    if(off){if(!this.offAt)this.offAt=t;this.onSince=0}
+    else if(this.offAt){if(!this.onSince)this.onSince=t;if(t-this.onSince>300)this.offAt=0}
+    const offMs=this.offAt?t-this.offAt:0;R.offMs=offMs;
+    if(offMs>=P.distMs&&!this.distLatch){this.distLatch=true;ev.push(['distraction',offMs])}
+    if(this.distLatch){if(!off){if(!this.distOnAt)this.distOnAt=t;if(t-this.distOnAt>=1000){this.distLatch=false;this.distOnAt=0}}else this.distOnAt=0}
+    // VATS: cumulative off-road time in 30 s
+    this.vq.push([t,dt,off]);if(off)this.vcum+=dt;
+    while(this.vqh<this.vq.length&&this.vq[this.vqh][0]<t-30000){const q=this.vq[this.vqh++];if(q[2])this.vcum-=q[1]}
+    if(this.vqh>600){this.vq=this.vq.slice(this.vqh);this.vqh=0}
+    R.vats=this.vcum;
+    if(f.vats&&b.ok){if(!this.vatsLatch&&this.vcum>=P.vatsSec*1000){this.vatsLatch=true;ev.push(['vats',this.vcum])}else if(this.vatsLatch&&!off&&this.vcum<P.vatsSec*600)this.vatsLatch=false}else this.vatsLatch=false;
+    // ---- PERCLOS (P80) ----
+    const deep=oS<1-P.perclosLevel,valid=!off;
+    this.pq.push([t,dt,valid?(deep?1:0):-1]);if(valid){this.pst+=dt;if(deep)this.psc+=dt}
+    const W=P.perclosWin*1000;
+    while(this.pqh<this.pq.length&&this.pq[this.pqh][0]<t-W){const q=this.pq[this.pqh++];if(q[2]>=0){this.pst-=q[1];if(q[2])this.psc-=q[1]}}
+    if(this.pqh>1000){this.pq=this.pq.slice(this.pqh);this.pqh=0}
+    const pc=this.pst>0?clamp(this.psc/this.pst,0,1):0;R.perclos=pc;R.perclosCover=this.pst;
+    if(f.perclos&&this.pst>=Math.min(30000,W*.5)){if(!this.pFat&&pc>P.perclosLimit){this.pFat=true;ev.push(['perclos_high',pc])}else if(this.pFat&&pc<P.perclosLimit*.65)this.pFat=false}else if(!f.perclos)this.pFat=false;
+    // ---- yawn ----
+    const yOpen=f.yawn&&(fr.jaw!=null?fr.jaw>P.yawnJaw:fr.mar>b.mar0+P.yawnMar);
+    if(yOpen){if(!this.mouthAt)this.mouthAt=t;if(!this.yawnCounted&&t-this.mouthAt>=P.yawnMs){this.yawnCounted=true;this.yawns.push(t);this.yawnUntil=t+3500;ev.push(['yawn'])}}
+    else{this.mouthAt=0;this.yawnCounted=false}
+    R.mouthMs=this.mouthAt?t-this.mouthAt:0;
+    // ---- head nod (fast drop + recovery while eyes drooping) ----
+    this.ph.push([t,dp]);while(this.ph.length&&this.ph[0][0]<t-900)this.ph.shift();
+    if(f.nod&&b.ok){
+      let mn=1e9;for(const q of this.ph)mn=Math.min(mn,q[1]);
+      if(!this.nodArmed&&dp>P.nodDeg&&dp-mn>P.nodDeg*.7){this.nodArmed=true;this.nodAt=t;this.nodMinO=oS}
+      if(this.nodArmed){this.nodMinO=Math.min(this.nodMinO,oS);
+        if(dp<P.nodDeg*.45){if(t-this.nodAt<2500&&this.nodMinO<Math.max(.45,thr*1.4)){this.nods.push(t);ev.push(['nod'])}this.nodArmed=false}
+        else if(t-this.nodAt>4000)this.nodArmed=false}
+    }else this.nodArmed=false;
+    // ---- droop / tilt ----
+    const droop=f.droop&&b.ok&&((dp>P.droopDeg&&oS<.6)||Math.abs(dr)>P.rollDeg);
+    if(droop){if(!this.droopAt)this.droopAt=t}else this.droopAt=0;
+    R.droopMs=this.droopAt?t-this.droopAt:0;
+    if(R.droopMs>=P.droopMs&&R.droopMs-dt<P.droopMs)ev.push(['droop',dp]);
+    // ---- adaptive open-eye baseline (only while clearly alert & frontal) ----
+    if(f.adaptBase&&b.ok&&b.cal&&!this.closed&&oS>.6&&Math.abs(dy)<15&&Math.abs(dp)<12&&this.score<30&&!yawning){
+      for(let i=0;i<2;i++){this.adE[i].push(fr.ear[i]);if(fr.bs)this.adB[i].push(fr.bs[i]);if(this.adE[i].length>400)this.adE[i].shift();if(this.adB[i].length>400)this.adB[i].shift()}
+      if(t-this.adT>5000&&this.adE[0].length>=60){this.adT=t;
+        for(let i=0;i<2;i++){
+          const e=quant(this.adE[i],.7);b.earOpen[i]=clamp(.92*b.earOpen[i]+.08*e,b.cal.earOpen[i]*.9,b.cal.earOpen[i]*1.25);
+          b.earOpen[i]=Math.max(b.earOpen[i],b.earClosed[i]+.05);
+          if(this.adB[i].length>=60){const q=quant(this.adB[i],.3);b.bsOpen[i]=clamp(.92*b.bsOpen[i]+.08*q,b.cal.bsOpen[i]-.05,Math.min(b.cal.bsOpen[i]+.12,b.bsClosed[i]-.15))}
+        }}
+    }
+    this._stats(t);
+    return this._decide(t);
+  }
+  _stats(t){
+    const R=this.out,P=this.P,f=this.f;
+    while(this.blinks.length&&t-this.blinks[0].t>60000)this.blinks.shift();
+    for(const a of [this.micro,this.yawns,this.nods])while(a.length&&t-a[0]>600000)a.shift();
+    const n=this.blinks.length,win=clamp(t-this.t0,1,60000);
+    let sd=0,lg=0;for(const x of this.blinks){sd+=Math.min(x.d,2000);if(x.d>=P.longBlinkMs)lg++}
+    R.blinkRate=n*60000/Math.max(win,15000);R.blinkDur=n?sd/n:0;R.longFrac=n?lg/n:0;
+    R.micro10=this.micro.length;R.yawns10=this.yawns.length;R.nods10=this.nods.length;
+    this.yFat=f.yawn&&this.yawns.length>=P.yawnCluster;
+    if(t-this.scoreT>=200){
+      const dts=this.scoreT?t-this.scoreT:200;this.scoreT=t;
+      const pcv=f.perclos?clamp((R.perclos||0)/P.perclosLimit,0,1.3)*clamp(this.pst/30000,0,1):0; // trust PERCLOS only with enough data
+      const bl=f.blinks&&n>=3?clamp((R.blinkDur-160)/280,0,1)*.5+clamp(R.longFrac/.3,0,1)*.5:0;
+      const yv=f.yawn?clamp(this.yawns.length/P.yawnCluster,0,1):0,nv=f.nod?clamp(this.nods.length/2,0,1):0,mv=clamp(this.micro.length/2,0,1);
+      const raw=clamp(35*pcv+25*bl+20*yv+15*nv+35*mv,0,100);
+      const tau=raw>this.score?4000:30000;this.score+=(raw-this.score)*(1-Math.exp(-dts/tau));
+      const warm=t-this.t0>30000||this.micro.length>0;
+      if(f.fatigueScore&&warm){if(!this.sFat&&this.score>=P.fatigueThr){this.sFat=true}else if(this.sFat&&this.score<P.fatigueThr-12)this.sFat=false}else this.sFat=false;
+    }
+    R.score=this.score;R.kss=1+8*this.score/100;
+  }
+  _decide(t){
+    const R=this.out,f=this.f,P=this.P,ev=this.ev;
+    let k=this.cal?'calib':'ok',lvl=0,ti=this.cal?'CALIBRATING':'AWAKE',sub='';
+    if(this.cal){const c=this.cal;sub=c.phase==='prep'||c.phase==='closed'?'Close your eyes until the beep':'Sit normally, look at the road, eyes open'}
+    else if(!this.base.ok)sub='Not calibrated - using defaults';
+    const set=(K,L,T,Su)=>{if(L>lvl){k=K;lvl=L;ti=T;sub=Su||''}};
+    const cms=R.closedMs||0,s1=x=>(x/1000).toFixed(1);
+    if(R.face&&f.eyeAlarm&&!this.cal){
+      if(cms>=P.unrespMs)set('unresp',4,'WAKE UP!','Eyes closed '+s1(cms)+' s - PULL OVER');
+      else if(cms>=P.sleepMs)set('sleep',4,'WAKE UP!','Eyes closed '+s1(cms)+' s');
+      else if(cms>=P.microMs*(R.yawning?1.5:1))set('micro',3,'WAKE UP!','Microsleep - eyes closed '+s1(cms)+' s');
+      else if(t<this.holdUntil)set('micro',3,'STAY AWAKE!','Eyes were closed '+s1(this.lastClosure)+' s');
+    }
+    if(!R.face&&f.noDriver){const thr=this.lostWhileClosed?Math.min(700,P.noFaceMs):P.noFaceMs,nf=R.noFaceMs||0;
+      if(nf>=thr)set('nodriver',nf>=thr+4000?3:2,'NO DRIVER DETECTED',this.blocked?'Camera blocked?':'Face the camera')}
+    if(R.face&&!this.cal){
+      if(f.distraction&&R.offMs>=P.distMs+3000)set('distract',3,'EYES ON ROAD!','Looking away '+s1(R.offMs)+' s');
+      if(f.eyeAlarm&&cms>=P.warnMs&&!R.yawning)set('closing',2,'EYES CLOSING','Stay alert');
+      if(f.droop&&R.droopMs>=P.droopMs)set('droop',2,'HEAD DROOPING','Keep your head up');
+      if(f.distraction&&this.distLatch)set('distract',2,'EYES ON ROAD',R.offMs?'Looking away '+s1(R.offMs)+' s':'');
+      if(f.vats&&this.vatsLatch)set('vats',2,'EYES ON ROAD','Too much time looking away');
+    }
+    const why=[];if(f.perclos&&this.pFat)why.push('frequent eye closure');if(this.yFat)why.push('repeated yawning');if(this.sFat)why.push('fatigue score '+Math.round(this.score));
+    const fat=!this.cal&&why.length>0;R.fatigue=fat;R.fatigueWhy=why.join(', ');
+    if(fat)set('fatigue',1,'TAKE A BREAK','Drowsiness detected: '+R.fatigueWhy);
+    if(this.blocked)set('blocked',1,'CAMERA BLOCKED','Driver monitoring unavailable');
+    else if(this.lowLight)set('lowlight',1,'LOW LIGHT','Detection may be unreliable');
+    if(R.face&&t<this.yawnUntil&&!this.cal)set('yawn',1,'YAWNING','Sign of fatigue');
+    if(fat&&!this.wasFat)ev.push(['fatigue_on',R.fatigueWhy]);if(!fat&&this.wasFat)ev.push(['fatigue_off']);this.wasFat=fat;
+    R.key=k;R.lvl=lvl;R.title=ti;R.sub=sub;R.lowLight=this.lowLight;R.blocked=this.blocked;R.luma=this.luma;
+    if(k!==this.prevKey){ev.push(['state',k,lvl]);this.prevKey=k}
+    return R;
+  }
+}
+return {DrowsyEngine,extract,effective,OneEuro,EYES,clamp};
+})();
+/*ENGINE_END*/
+
+/* ============================ SYNTHETIC DRIVER (demo / simulation) ============================ */
+const SIM={closed:0,closedEnd:0,yawn:0,yawnEnd:0,away:0,phone:0,noface:0,nod:0,drowsy:0};
+function simulate(k,now){
+  const s={blink:[700],micro:[1600],sleep:[4000]};
+  if(s[k]){SIM.closed=now;SIM.closedEnd=now+s[k][0];return}
+  if(k==='yawn'){SIM.yawn=now;SIM.yawnEnd=now+2600}
+  if(k==='away')SIM.away=now+4500;if(k==='phone')SIM.phone=now+4000;if(k==='noface')SIM.noface=now+4000;
+  if(k==='nod')SIM.nod=now;if(k==='drowsy')SIM.drowsy=now+60000;
+}
+function applySim(fr,t){
+  if(t<SIM.noface)return {face:false};
+  if(!fr.face)return fr;
+  fr={...fr,ear:[...fr.ear],bs:fr.bs?[...fr.bs]:null,ew:[...fr.ew]};
+  const b=E.base,closeTo=(a)=>{for(let i=0;i<2;i++){fr.ear[i]=fr.ear[i]*(1-a)+b.earClosed[i]*.8*a;if(fr.bs)fr.bs[i]=fr.bs[i]*(1-a)+.85*a}};
+  if(t<SIM.drowsy){const ph=(t%2600);closeTo(.35);if(ph<800)closeTo(1);if((t%40000)<2400){fr.jaw=.8;fr.mar=.7}}
+  if(t>=SIM.closed&&t<SIM.closedEnd)closeTo(1);
+  if(t>=SIM.yawn&&t<SIM.yawnEnd){fr.jaw=.85;fr.mar=.75}
+  if(t<SIM.away){fr.yaw+=42;if(fr.eyeYaw!=null)fr.eyeYaw+=8}
+  if(t<SIM.phone){fr.pitch+=30;if(fr.eyePitch!=null)fr.eyePitch+=10;closeTo(.2)}
+  const nd=t-SIM.nod;if(SIM.nod&&nd>=0&&nd<1700){const a=nd<280?nd/280:nd<800?1:Math.max(0,1-(nd-800)/600);fr.pitch+=30*a;closeTo(.85*a)}
+  return fr;
+}
+class SynthDriver{
+  constructor(t){this.nb=t+1500;this.be=0;this.bd=0;this.ph=Math.random()*10}
+  frame(t){
+    const n=()=>(Math.random()-.5)*.012;
+    let a=0;
+    if(t>=this.nb){this.bs=t;this.bd=130+Math.random()*170;this.nb=t+2500+Math.random()*3000}
+    if(this.bs&&t<this.bs+this.bd){const x=(t-this.bs)/this.bd;a=x<.4?x/.4:x<.6?1:1-(x-.6)/.4}
+    const ear=.30*(1-a)+.07*a,w=Math.sin(t/3100+this.ph);
+    return {face:true,ear:[ear+n(),ear+n()],ew:[42,42],iod:118,mar:.05+Math.abs(n()),bs:[.07+.6*a+n(),.07+.6*a+n()],jaw:.03+Math.abs(n()),
+      yaw:4*w+n()*40,pitch:9+2*Math.sin(t/2300)+n()*40,roll:1+n()*30,eyeYaw:3*Math.sin(t/1700),eyePitch:2*Math.sin(t/2900),poseSrc:'synthetic'};
+  }
+}
+
+/* ============================ ALERTS (sound / voice / vibration) ============================ */
+const AL={ac:null,loopKey:'',loopT:0,lastKey:'',fatT:0,snooze:0,
+  init(){try{if(!this.ac)this.ac=new(window.AudioContext||window.webkitAudioContext)();if(this.ac.state!=='running')this.ac.resume()}catch(e){}},
+  tone(f,ms,type='sine',vol=1,to){if(!this.ac||!S.f.sound)return;try{const o=this.ac.createOscillator(),g=this.ac.createGain(),t=this.ac.currentTime,s=ms/1000,v=Math.max(.0001,S.vol*vol);
+    o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.linearRampToValueAtTime(to,t+s);
+    g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v,t+.01);g.gain.setValueAtTime(v,t+s*.8);g.gain.exponentialRampToValueAtTime(.0001,t+s);
+    o.connect(g);g.connect(this.ac.destination);o.start(t);o.stop(t+s+.03)}catch(e){}},
+  chime(){this.tone(784,220,'sine',.9);setTimeout(()=>this.tone(523,380,'sine',.9),230)},
+  sayT:{},say(txt,force){if(!S.f.voice||!('speechSynthesis' in window))return;const n=performance.now();if(!force&&n-(this.sayT[txt]||-1e9)<8000)return;this.sayT[txt]=n;try{if(force)speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(txt);u.rate=1.05;u.volume=Math.min(1,S.vol*1.25);u.lang='en-US';speechSynthesis.speak(u)}catch(e){}},
+  vib(p){if(S.f.vibrate&&navigator.vibrate)try{navigator.vibrate(p)}catch(e){}},
+  LOOPS:{
+    micro:{ms:700,s:()=>AL.tone(880,450,'square',.75),v:[300,100,300]},
+    sleep:{ms:380,s:()=>AL.tone(1200,300,'square',.9),v:[500,80,500]},
+    siren:{ms:1000,s:()=>{AL.tone(650,480,'sawtooth',.9,1400);setTimeout(()=>AL.tone(1400,480,'sawtooth',.9,650),500)},v:[900,100]},
+    nodriver:{ms:1600,s:()=>AL.tone(1760,180,'triangle',.7)},nodriver2:{ms:700,s:()=>AL.tone(1760,220,'triangle',.85),v:[200]},
+    distract:{ms:1400,s:()=>{AL.tone(1000,110,'sine',.8);setTimeout(()=>AL.tone(1000,110,'sine',.8),170)}},
+    distract2:{ms:650,s:()=>{AL.tone(1100,120,'square',.8);setTimeout(()=>AL.tone(1100,120,'square',.8),170)},v:[250]},
+    droop:{ms:1500,s:()=>{AL.tone(520,160,'sine',.8);setTimeout(()=>AL.tone(520,160,'sine',.8),220)},v:[200]}
+  },
+  loop(k){if(this.loopKey===k)return;clearInterval(this.loopT);this.loopKey=k;try{navigator.vibrate&&navigator.vibrate(0)}catch(e){}
+    if(!k)return;const L=this.LOOPS[k],fn=()=>{L.s();if(L.v)this.vib(L.v)};fn();this.loopT=setInterval(fn,L.ms)},
+  update(R,t){
+    const k=R.key,lvl=R.lvl;let lk='';
+    if(k==='unresp')lk=S.f.escalate?'siren':'micro';else if(k==='sleep')lk=S.f.escalate?'sleep':'micro';else if(k==='micro')lk='micro';
+    else if(k==='nodriver')lk=lvl>=3?'nodriver2':'nodriver';else if(k==='distract')lk=lvl>=3?'distract2':'distract';else if(k==='droop')lk='droop';
+    this.loop(lk);
+    if(k!==this.lastKey){
+      const said={micro:'Wake up!',sleep:'Wake up! Pull over.',unresp:'Wake up! Pull over now!',distract:'Eyes on the road.',vats:'Keep your eyes on the road.',droop:'Keep your head up.',nodriver:'Driver not detected.',blocked:'Camera blocked. Driver monitoring unavailable.'}[k];
+      if(k==='closing')this.tone(660,260,'sine',.8);
+      if(k==='vats'){this.tone(1000,120);setTimeout(()=>this.tone(1000,120),180)}
+      if(said)this.say(said,lvl>=3);
+      this.lastKey=k;
+    }
+    if(R.fatigue&&t>this.snooze){if(!this.fatT||t-this.fatT>90000){this.fatT=t;this.chime();if(lvl<3)this.say('Drowsiness detected. Please take a break.')}}
+    else if(!R.fatigue)this.fatT=0;
+  },
+  stop(){this.loop('');this.lastKey='';try{speechSynthesis.cancel()}catch(e){}}
+};
+
+/* ============================ RUNTIME ============================ */
+const $=id=>document.getElementById(id);
+const v=$('v'),ovc=$('ov'),ox=ovc.getContext('2d');
+const E=new Engine.DrowsyEngine();
+let loadedVer='',FL=null,vision=null,lm=null,modelBuf=null,delegateUsed='',running=false,demo=false,stream=null,synth=null,wl=null;
+let lastTick=0,gen=0,useRVFC=true,stall=0;
+let W=640,H=480,fpsT=24,infAvg=0,lastProc=0,lastTs=0,budget=1,adaptT=0,camT=0,boost=1,lastRes=null,lastUi=0,startT=0,procN=0,fpsMeas=0,fpsWinT=0,fpsWinN=0,errN=0,lastVT=-1,tmr=0;
+let curOpts={};
+const LOG=[];let REC=null;
+const smallC=document.createElement('canvas');smallC.width=48;smallC.height=36;const sx=smallC.getContext('2d',{willReadFrequently:true});
+const boostC=document.createElement('canvas');const bx=boostC.getContext('2d');
+const canFilter='filter' in bx;
+
+function msg(t){$('tMsg').textContent=t||'';$('fMsg').textContent=t||''}
+let metricsBlocked=0;
+(function netGuard(){ // blocks only MediaPipe's usage-metrics endpoint when the privacy switch is on
+  const isM=u=>{try{u=String(typeof u==='string'?u:(u&&u.url)||u);return CFG.METRICS_HOSTS.some(h=>u.includes(h))}catch(e){return false}};
+  const of=window.fetch&&window.fetch.bind(window);
+  if(of)window.fetch=(input,init)=>{if(S.f.blockMetrics&&isM(input)){metricsBlocked++;return Promise.resolve(new Response(null,{status:204}))}return of(input,init)};
+  if(navigator.sendBeacon){const ob=navigator.sendBeacon.bind(navigator);navigator.sendBeacon=(u,d)=>{if(S.f.blockMetrics&&isM(u)){metricsBlocked++;return true}return ob(u,d)}}
+  const xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u,...r){if(S.f.blockMetrics&&isM(u)){metricsBlocked++;u='data:,'}return xo.call(this,m,u,...r)};
+})();
+function softwareGL(){try{const c=document.createElement('canvas'),g=c.getContext('webgl2')||c.getContext('webgl');if(!g)return 'no WebGL';
+  const d=g.getExtension('WEBGL_debug_renderer_info'),r=d?String(g.getParameter(d.UNMASKED_RENDERER_WEBGL)):'';return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(r)?r:''}catch(e){return 'error'}}
+function applySettings(){
+  E.configure(S.f,S.p,S.sens);fpsT=Math.min(Math.max(fpsT,S.perf.minFps),S.perf.maxFps);
+  if(!S.f.adaptiveFps)fpsT=S.perf.maxFps;
+  renderEff();save();
+  if(lm){const want={outputFaceBlendshapes:!!S.f.blendModel,outputFacialTransformationMatrixes:!!S.f.matrix,minFaceDetectionConfidence:S.perf.detConf,minFacePresenceConfidence:S.perf.detConf};
+    if(JSON.stringify(want)!==JSON.stringify(curOpts)){curOpts=want;lm.setOptions(want).catch(e=>console.warn('setOptions',e))}}
+}
+async function fetchModel(){
+  const r=await fetch(CFG.MODEL);if(!r.ok)throw new Error('Model download failed ('+r.status+')');
+  const len=+r.headers.get('content-length')||3758596;
+  if(!r.body||!r.body.getReader)return new Uint8Array(await r.arrayBuffer());
+  const rd=r.body.getReader(),parts=[];let got=0;
+  for(;;){const {done,value}=await rd.read();if(done)break;parts.push(value);got+=value.length;$('ldP').style.width=Math.min(100,30+70*got/len)+'%';$('ldS').textContent='Face model '+(got/1048576).toFixed(1)+' / '+(len/1048576).toFixed(1)+' MB'}
+  const out=new Uint8Array(got);let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out;
+}
+async function createLM(dl){
+  curOpts={outputFaceBlendshapes:!!S.f.blendModel,outputFacialTransformationMatrixes:!!S.f.matrix,minFaceDetectionConfidence:S.perf.detConf,minFacePresenceConfidence:S.perf.detConf};
+  return FL.FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetBuffer:new Uint8Array(modelBuf),delegate:dl},runningMode:'VIDEO',numFaces:1,minTrackingConfidence:.5,...curOpts});
+}
+async function ensureModel(){
+  if(lm)return;
+  $('loader').classList.add('on');$('ldT').textContent='Loading AI engine…';$('ldP').style.width='5%';$('ldS').textContent='MediaPipe '+S.perf.mpVer+' (~15 MB first time, cached afterwards)';
+  try{
+    let lastErr;
+    const ver=MP_VERSIONS.includes(S.perf.mpVer)?S.perf.mpVer:MP_VERSIONS[0];loadedVer=ver;
+    if(!FL){for(const src of CFG.sources(ver)){try{FL=await import(src.bundle);$('ldP').style.width='15%';vision=await FL.FilesetResolver.forVisionTasks(src.wasm);break}catch(e){lastErr=e;FL=null;console.warn('source failed',src,e)}}}
+    if(!FL)throw lastErr||new Error('Could not load MediaPipe');
+    $('ldP').style.width='30%';
+    if(!modelBuf)modelBuf=await fetchModel();
+    $('ldT').textContent='Starting detector…';$('ldS').textContent='Compiling for this device';
+    let want=S.perf.delegate;const sw=want==='auto'&&softwareGL();
+    if(sw){want='CPU';logEv('','No GPU acceleration ('+sw+') - using CPU')}
+    if(want!=='CPU'){try{lm=await createLM('GPU');delegateUsed='GPU'}catch(e){console.warn('GPU delegate failed',e);if(want==='GPU')msg('GPU failed - using CPU')}}
+    if(!lm){lm=await createLM('CPU');delegateUsed='CPU'}
+    // warm-up (also catches GPU delegates that create fine but fail on first run)
+    try{const c=document.createElement('canvas');c.width=64;c.height=48;c.getContext('2d').fillRect(0,0,64,48);lm.detectForVideo(c,lastTs=performance.now())}
+    catch(e){console.warn('warm-up failed on',delegateUsed,e);if(delegateUsed==='GPU'){try{lm.close()}catch(_){}lm=await createLM('CPU');delegateUsed='CPU'}}
+  }finally{$('loader').classList.remove('on')}
+}
+async function openCamera(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Camera API unavailable - open this page over HTTPS or localhost');
+  const [w,h]=S.perf.res.split('x').map(Number);
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:w},height:{ideal:h},frameRate:{ideal:30,max:30}}});
+  v.srcObject=stream;await v.play();
+  W=v.videoWidth||w;H=v.videoHeight||h;ovc.width=W;ovc.height=H;boostC.width=W;boostC.height=H;
+  $('tVideoBox').style.aspectRatio=W+'/'+H;$('ph').style.display='none';
+}
+async function start(){
+  AL.init();if(running&&!demo)return;if(demo)stop();
+  setBtns('loading');msg('');
+  try{
+    await ensureModel();await openCamera();
+    E.reset();applySettings();running=true;demo=false;startT=performance.now();fpsT=S.perf.maxFps;budget=1;lastVT=-1;lastTick=0;lastProc=0;stall=0;useRVFC=true;
+    lockWake();setBtns('run');
+    if(S.f.autoCalib)calibrate();else msg('Auto-calibration off - press Calibrate for best accuracy');
+    tick();
+  }catch(e){console.error(e);msg('Error: '+(e.message||e)+(location.protocol==='http:'&&!/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?' (camera needs HTTPS or localhost)':''));stopTracks();setBtns('idle')}
+}
+function startDemo(){
+  AL.init();if(running)stop();
+  demo=true;running=true;synth=new SynthDriver(performance.now());W=640;H=480;ovc.width=W;ovc.height=H;$('tVideoBox').style.aspectRatio='4/3';$('ph').style.display='none';
+  E.reset();applySettings();startT=performance.now();fpsT=Math.min(24,S.perf.maxFps);delegateUsed='demo';lastTick=0;lastProc=0;setBtns('run');
+  if(S.f.autoCalib)calibrate();tick();
+}
+function stopTracks(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}v.srcObject=null}
+function stop(){
+  running=false;demo=false;clearTimeout(tmr);AL.stop();stopTracks();if(wl){wl.release().catch(()=>{});wl=null}
+  ox.clearRect(0,0,ovc.width,ovc.height);$('ph').style.display='';document.body.dataset.s='idle';
+  $('tSt').textContent='STOPPED';$('tSub').textContent='';$('fSt').textContent='STOPPED';$('fSub').textContent='Press Start to resume monitoring';
+  $('flash').classList.remove('on');$('calOv').classList.remove('on');$('fBanner').classList.remove('on');setBtns('idle');
+}
+function calibrate(){
+  if(!running)return;E.startCalib(performance.now(),S.f.closedCalib);
+  AL.say(S.f.closedCalib?'Calibrating. Look at the road with your eyes open.':'Calibrating. Look at the road.',true);AL.tone(880,120);
+}
+function setBtns(st){
+  const run=st==='run',load=st==='loading';
+  $('tStart').disabled=load||(run&&!demo);$('tDemo').disabled=load;$('tStop').disabled=!run;$('tCal').disabled=!run;$('fCal').disabled=!run;
+  $('fStart').disabled=load;$('fStart').textContent=run?'■ STOP':(load?'LOADING…':'▶ START');$('fStart').classList.toggle('stop',run);
+}
+async function lockWake(){try{if('wakeLock' in navigator)wl=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(running&&document.visibilityState==='visible'){lockWake();AL.init();
+  const gone=performance.now()-lastProc;if(gone>3000)logEv('w','Monitoring was paused for '+(gone/1000).toFixed(0)+' s (screen off / app in background)')}});
+
+function schedule(){
+  if(!running)return;const g=++gen;clearTimeout(tmr);
+  if(!demo&&S.f.rvfc&&useRVFC&&v.requestVideoFrameCallback){
+    v.requestVideoFrameCallback(()=>{if(g===gen)tick(false)});
+    // watchdog: some browsers stop frame callbacks for hidden/background video
+    tmr=setTimeout(()=>{if(g===gen){if(++stall>3&&useRVFC){useRVFC=false;logEv('w','Frame callback stalled - switched to timer loop')}tick(true)}},300);
+  }else tmr=setTimeout(()=>{if(g===gen)tick(true)},Math.max(4,1000/fpsT-(performance.now()-lastProc)));
+}
+function tick(timer){
+  if(!running)return;
+  const now=performance.now();let go;
+  if(timer||demo)go=demo||v.currentTime!==lastVT;            // timer loop is paced by setTimeout
+  else{budget=Math.min(1.5,budget+(lastTick?(now-lastTick)*fpsT/1000:1));go=budget>=1;stall=0} // token bucket keeps avg rate = fpsT
+  lastTick=now;
+  if(go&&(demo||v.readyState>=2)){
+    if(!timer&&!demo)budget-=1;
+    lastVT=v.currentTime;
+    try{process(now)}catch(e){errN++;console.warn(e);if(errN<5)logEv('w','Frame error: '+(e.message||e))}
+    lastProc=now;
+  }
+  schedule();
+}
+function camCheck(now){
+  try{sx.drawImage(v,0,0,48,36);const d=sx.getImageData(0,0,48,36).data;let s=0,s2=0;const n=d.length/4;
+    for(let i=0;i<d.length;i+=4){const y=.299*d[i]+.587*d[i+1]+.114*d[i+2];s+=y;s2+=y*y}
+    const m=s/n,sd=Math.sqrt(Math.max(0,s2/n-m*m));E.camInfo(m,sd,now);
+    const g=S.f.lowLight&&canFilter&&m<70?Math.min(2.6,110/Math.max(m,8)):1;boost=boost*.6+g*.4;
+  }catch(e){}
+}
+function process(now){
+  let fr,res=null,inf=0;
+  if(demo){fr=synth.frame(now);E.camInfo(120,40,now)}
+  else{
+    if(v.videoWidth&&(v.videoWidth!==W||v.videoHeight!==H)){W=v.videoWidth;H=v.videoHeight;ovc.width=W;ovc.height=H;boostC.width=W;boostC.height=H;$('tVideoBox').style.aspectRatio=W+'/'+H}
+    if(now-camT>500){camT=now;camCheck(now)}
+    let src=v;
+    if(boost>1.08){bx.filter=`brightness(${boost.toFixed(2)}) contrast(1.08)`;bx.drawImage(v,0,0,W,H);src=boostC}
+    const ts=Math.max(now,lastTs+1);lastTs=ts;
+    const t0=performance.now();res=lm.detectForVideo(src,ts);inf=performance.now()-t0;
+    infAvg=infAvg?infAvg*.85+inf*.15:inf;lastRes=res;
+    fr=Engine.extract(res,W,H,{ear3d:S.f.ear3d,matrix:S.f.matrix});
+  }
+  fr=applySim(fr,now);
+  const R=E.update(fr,now);
+  for(const e of E.drain())onEvent(e,now);
+  AL.update(R,now);
+  procN++;fpsWinN++;if(now-fpsWinT>=1000){fpsMeas=fpsWinN*1000/(now-fpsWinT||1);fpsWinN=0;fpsWinT=now}
+  if(S.f.adaptiveFps&&!demo&&now-adaptT>2000){adaptT=now;
+    if(infAvg*fpsT>600&&fpsT>S.perf.minFps)fpsT--;else if(infAvg*(fpsT+1)<380&&fpsT<S.perf.maxFps)fpsT++}
+  if(!S.f.adaptiveFps)fpsT=S.perf.maxFps;
+  if(REC)recRow(fr,R,now,inf);
+  if(S.mode==='test'){chartPush(R,now);if(S.f.overlay)drawOverlay(res,fr,R,now);else if(!demo)ox.clearRect(0,0,W,H)}
+  setStateColor(R);
+  if(now-lastUi>(S.mode==='test'?120:200)){lastUi=now;S.mode==='test'?renderTest(R,now):renderFinal(R,now)}
+}
+
+/* ============================ EVENTS / LOG ============================ */
+const EVTXT={calibrated:['g','Calibrated'],cal_fail:['w','Calibration failed'],cal_closed:['g','Closed-eye level measured'],cal_closed_fail:['w','Closed-eye step skipped'],
+  long_blink:['','Long blink'],eyes_open:['','Eyes re-opened after'],microsleep:['a','MICROSLEEP'],sleep:['a','SLEEP (eyes closed)'],unresponsive:['a','UNRESPONSIVE'],
+  yawn:['w','Yawn'],nod:['w','Head nod'],droop:['w','Head droop'],distraction:['w','Eyes off road'],vats:['w','Too many glances away'],perclos_high:['w','PERCLOS high'],
+  fatigue_on:['a','FATIGUE WARNING'],fatigue_off:['g','Fatigue cleared'],driver_lost:['','Face lost'],driver_back:['','Face back after'],lowlight:['w','Low light'],blocked:['a','Camera blocked']};
+function logEv(c,txt){const now=new Date();LOG.push(now.toISOString()+','+JSON.stringify(txt));if(LOG.length>3000)LOG.shift();
+  const el=$('evlog'),d=document.createElement('div');d.className=c;d.textContent=now.toLocaleTimeString()+'  '+txt;el.prepend(d);while(el.childNodes.length>80)el.lastChild.remove()}
+function onEvent(e,now){
+  const [k,val]=e;
+  if(k==='cal_close'){AL.tone(660,200);AL.say('Now close your eyes until the beep.',true);return}
+  if(k==='cal_open'){AL.tone(990,250);AL.say('Open your eyes.',true);return}
+  if(k==='calibrated'&&!S.f.closedCalib){AL.tone(990,180);AL.say('Calibrated. Drive safe.')}
+  if(k==='cal_closed'){AL.say('Calibrated. Drive safe.')}
+  if(k==='cal_closed_fail'){AL.say('Calibrated with open eyes only.')}
+  if(k==='cal_fail'){AL.say('Calibration failed. Face the camera and try again.',true);msg('Calibration failed: '+val+' - press Calibrate to retry')}
+  if(k==='state'){if(val!=='ok'&&e[2]>=2)logEv(e[2]>=3?'a':'w','State → '+val);return}
+  const t=EVTXT[k];if(!t)return;
+  let s=t[1];if(typeof val==='number'&&/blink|open|micro|sleep|unresp|back|distraction|vats/.test(k))s+=' '+(val/1000).toFixed(2)+' s';
+  else if(k==='perclos_high')s+=' '+Math.round(val*100)+'%';else if(val!=null&&typeof val!=='number')s+=' · '+val;
+  logEv(t[0],s);
+}
+
+/* ============================ RENDERING ============================ */
+const MAP={ok:'ok',calib:'cal',closing:'warn',droop:'warn',distract:'warn',vats:'warn',fatigue:'warn',yawn:'info',micro:'alarm',sleep:'alarm',unresp:'alarm',nodriver:'pur',blocked:'info',lowlight:'info'};
+let lastCls='';
+function setStateColor(R){
+  const c=MAP[R.key]||'ok';if(c!==lastCls){document.body.dataset.s=c;lastCls=c}
+  const fl=S.f.flash&&R.lvl>=3;$('flash').classList.toggle('on',fl);if(fl){$('flT').textContent=R.title;$('flS').textContent=R.sub}
+  const cal=R.cal&&S.mode==='final';$('calOv').classList.toggle('on',!!cal);
+  if(R.cal){const ph=R.cal.phase;$('calT').textContent=ph==='closed'?'Close your eyes':'Calibrating';$('calS').textContent=ph==='closed'?'Keep them closed until the beep':'Sit normally, look at the road, eyes open';$('calP').style.width=Math.round(R.cal.p*100)+'%'}
+}
+const pct=x=>x==null||!isFinite(x)?'—':Math.round(x*100)+'%',f2=x=>x==null||!isFinite(x)?'—':x.toFixed(2),f0=x=>x==null||!isFinite(x)?'—':Math.round(x),deg=x=>x==null||!isFinite(x)?'—':(x>0?'+':'')+Math.round(x)+'°',sec=x=>x?(x/1000).toFixed(1)+'s':'0';
+const METRICS=[
+ ['Eye openness',R=>pct(R.o),R=>R.closed],['Left eye',R=>pct(R.oL)],['Right eye',R=>pct(R.oR)],['EAR L / R',R=>R.ear?R.ear[0].toFixed(3)+'/'+R.ear[1].toFixed(3):'—'],['AI blink L / R',R=>R.bs?f2(R.bs[0])+'/'+f2(R.bs[1]):'off'],
+ ['Closed for',R=>sec(R.closedMs),R=>R.closedMs>=E.P.warnMs],['Closed below',R=>pct(R.thr)],['PERCLOS',R=>pct(R.perclos),R=>R.perclos>E.P.perclosLimit],['Blinks / min',R=>f0(R.blinkRate)],['Avg blink',R=>f0(R.blinkDur)+' ms'],
+ ['Long blinks',R=>pct(R.longFrac)],['Microsleeps 10m',R=>R.micro10,R=>R.micro10>0],['Yawns 10m',R=>R.yawns10],['Nods 10m',R=>R.nods10],['Jaw / mouth',R=>R.jaw!=null?f2(R.jaw):f2(R.mar)],
+ ['Head yaw',R=>deg(R.dy)],['Head pitch ↓',R=>deg(R.dp)],['Head roll',R=>deg(R.dr)],['Gaze yaw',R=>deg(R.gy)],['Gaze pitch ↓',R=>deg(R.gp)],
+ ['Off-road',R=>sec(R.offMs),R=>R.offMs>=E.P.distMs],['Glances 30s',R=>sec(R.vats)],['Fatigue score',R=>f0(R.score),R=>R.fatigue],['KSS estimate',R=>R.kss?R.kss.toFixed(1):'—'],['Face size',R=>f0(R.iod)+' px'],
+ ['Brightness',R=>f0(R.luma)+(boost>1.08?' ×'+boost.toFixed(1):'')],['FPS',()=>fpsMeas.toFixed(0)+' / '+fpsT],['Inference',()=>demo?'—':infAvg.toFixed(1)+' ms'],['Backend',()=>(delegateUsed||'—')+(loadedVer?' · '+loadedVer:'')],['Look-down comp',R=>pct(R.comp)]
+];
+(function buildMetrics(){$('metrics').innerHTML=METRICS.map((m,i)=>`<div class="m" id="mm${i}"><small>${m[0]}</small><b>—</b></div>`).join('')})();
+function renderTest(R,now){
+  $('tSt').textContent=R.title;$('tSub').textContent=R.sub;
+  $('tScoreFill').style.width=Math.min(100,R.score||0)+'%';$('tScoreTxt').textContent='Fatigue score '+f0(R.score)+' / 100 · warn ≥ '+f0(E.P.fatigueThr)+(R.monMs<30000?' · learning '+Math.ceil((30000-R.monMs)/1000)+'s':'');
+  METRICS.forEach((m,i)=>{const el=$('mm'+i);let val;try{val=m[1](R)}catch(e){val='—'}el.lastChild.textContent=val;el.classList.toggle('hot',!!(m[2]&&m[2](R)))});
+  $('hud').textContent=`${fpsMeas.toFixed(0)} fps · ${demo?'demo':infAvg.toFixed(1)+' ms · '+delegateUsed} · ${W}×${H}${REC?' · ● REC '+REC.length:''}\n${R.poseSrc||''}${metricsBlocked?' · metrics blocked '+metricsBlocked:''} · cal ${E.base.ok?(E.base.closedOk?'2-step':'open-eye')+' '+E.base.quality+'%':'none'}`;
+  drawChart();
+}
+const ICO={
+ eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/></svg>',
+ shut:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 10s3.6 6 10 6 10-6 10-6M5 14l-2 3M9.5 16l-.8 3.2M14.5 16l.8 3.2M19 14l2 3"/></svg>',
+ cup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8zM6 2v3M10 2v3M14 2v3"/></svg>',
+ road:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3 4 21M16 3l4 18M12 4v3M12 11v3M12 18v2"/></svg>',
+ user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6M3 3l18 18"/></svg>',
+ cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 7h4l2-3h6l2 3h4v13H3zM3 3l18 18"/></svg>',
+ head:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="9" r="5"/><path d="M12 14v3M7 21h10M9 8h.01M15 8h.01"/></svg>'};
+const ICOFOR={ok:'eye',calib:'eye',closing:'shut',micro:'shut',sleep:'shut',unresp:'shut',fatigue:'cup',yawn:'cup',distract:'road',vats:'road',nodriver:'user',blocked:'cam',lowlight:'cam',droop:'head'};
+let lastIco='';
+function renderFinal(R,now){
+  $('fSt').textContent=R.title;$('fSub').textContent=R.key==='fatigue'?'Drowsiness detected':R.sub;
+  const ic=ICOFOR[R.key]||'eye';if(ic!==lastIco){$('fIco').innerHTML=ICO[ic];lastIco=ic}
+  const alert=R.cal?R.cal.p*100:Math.max(0,100-(R.score||0));
+  $('fArc').style.strokeDashoffset=(653.5*(1-alert/100)).toFixed(1);
+  $('fLvl').textContent=R.cal?'calibrating':R.monMs<30000?'learning your baseline':'alertness '+Math.round(alert)+'%';
+  $('cEye').textContent=!R.face?'—':R.closed?'Closed':pct(R.o);
+  $('cHead').textContent=!R.face?'—':R.offMs>800?'Away':R.droopMs>500?'Down':'Ahead';
+  $('cAlert').textContent=R.kss?'KSS '+R.kss.toFixed(1):'—';
+  $('cBlink').textContent=f0(R.blinkRate);$('cYawn').textContent=R.yawns10==null?'—':R.yawns10;
+  const s=Math.floor((now-startT)/1000);$('cTime').textContent=Math.floor(s/3600)?Math.floor(s/3600)+':'+String(Math.floor(s/60)%60).padStart(2,'0')+'h':Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+  const ban=R.fatigue&&now>AL.snooze;$('fBanner').classList.toggle('on',ban);if(ban)$('fBanSub').textContent='Take a break · '+R.fatigueWhy;
+  $('fPvTxt').textContent=demo?'Demo mode (no camera)':!R.face?'Face not visible':R.blocked?'Camera blocked':R.lowLight?'Low light':'Face tracked ✓';
+}
+
+/* ---------- overlay ---------- */
+const MOUTH=[78,95,88,178,87,14,317,402,318,324,308,415,310,311,312,13,82,81,80,191];
+function drawOverlay(res,fr,R,now){
+  ox.clearRect(0,0,W,H);
+  if(demo){drawCartoon(fr,R);return}
+  const lmk=res&&res.faceLandmarks&&res.faceLandmarks[0];if(!lmk)return;
+  const P=i=>[lmk[i].x*W,lmk[i].y*H];
+  const poly=(ids,col,close=true,lw=2)=>{ox.beginPath();ids.forEach((id,j)=>{const p=P(id);j?ox.lineTo(p[0],p[1]):ox.moveTo(p[0],p[1])});if(close)ox.closePath();ox.strokeStyle=col;ox.lineWidth=lw;ox.stroke()};
+  const ec=R.closed?'#ef4444':(R.o<R.thr+.15?'#f59e0b':'#22c55e');
+  for(const e of Engine.EYES){poly(e.ring,ec);if(lmk.length>e.iris){const p=P(e.iris);ox.fillStyle='#38bdf8';ox.beginPath();ox.arc(p[0],p[1],2.5,0,7);ox.fill()}}
+  poly(MOUTH,R.mouthMs?'#c084fc':'#94a3b8',true,1.5);
+  // head direction arrow from nose tip (image coords: +x right)
+  const n=P(1),L=Math.max(40,(R.iod||80)*.9);
+  const ax=Math.sin((R.gy||0)/57.3)*L*1.4,ay=Math.sin((R.gp||0)/57.3)*L*1.4;
+  ox.strokeStyle=R.offMs>500?'#f59e0b':'#38bdf8';ox.lineWidth=3;ox.beginPath();ox.moveTo(n[0],n[1]);ox.lineTo(n[0]+ax,n[1]+ay);ox.stroke();
+  ox.fillStyle='#38bdf8';ox.beginPath();ox.arc(n[0]+ax,n[1]+ay,4,0,7);ox.fill();
+}
+function drawCartoon(fr,R){
+  ox.fillStyle='#0b1018';ox.fillRect(0,0,W,H);
+  if(!fr.face){ox.save();ox.scale(-1,1);ox.fillStyle='#64748b';ox.font='bold 28px system-ui';ox.textAlign='center';ox.fillText('NO FACE',-W/2,H/2);ox.restore();return}
+  const cx=W/2-(R.dy||0)*4,cy=H/2+(R.dp-0)*3.5;
+  ox.save();ox.translate(cx,cy);ox.rotate(-(R.dr||0)/57.3);
+  ox.fillStyle='#d8b49a';ox.beginPath();ox.ellipse(0,0,120,150,0,0,7);ox.fill();
+  const op=Engine.clamp(R.o==null?1:R.o,0,1.1);
+  for(const sx of [-48,48]){ox.fillStyle='#fff';ox.beginPath();ox.ellipse(sx,-30,30,Math.max(1.5,16*op),0,0,7);ox.fill();
+    if(op>.15){ox.fillStyle='#1e293b';ox.beginPath();ox.arc(sx+(R.gy-R.dy||0)*.6,-30,8*Math.min(1,op+.2),0,7);ox.fill()}
+    ox.strokeStyle='#5b3a29';ox.lineWidth=3;ox.beginPath();ox.moveTo(sx-30,-30);ox.lineTo(sx+30,-30);if(op<.15)ox.stroke()}
+  const j=fr.jaw!=null?fr.jaw:0;ox.fillStyle='#7f1d1d';ox.beginPath();ox.ellipse(0,70,34,4+40*j,0,0,7);ox.fill();
+  ox.restore();ox.save();ox.scale(-1,1);ox.fillStyle='#94a3b8';ox.font='12px system-ui';ox.textAlign='left';ox.fillText('DEMO DRIVER (synthetic)',-W+10,H-12);ox.restore();
+}
+
+/* ---------- chart ---------- */
+const CH={t:new Float64Array(720),o:new Float32Array(720),th:new Float32Array(720),j:new Float32Array(720),p:new Float32Array(720),y:new Float32Array(720),l:new Uint8Array(720),f:new Uint8Array(720),i:0,n:0};
+function chartPush(R,now){const i=CH.i;CH.t[i]=now;CH.o[i]=R.face?(R.o??0):NaN;CH.th[i]=R.thr??NaN;CH.j[i]=R.face?(R.jaw!=null?R.jaw:R.mar):NaN;CH.p[i]=R.face?(R.dp||0)/45:NaN;CH.y[i]=R.face?(R.gy||0)/45:NaN;CH.l[i]=R.lvl||0;CH.f[i]=R.face?1:0;CH.i=(i+1)%720;CH.n=Math.min(720,CH.n+1)}
+const chartC=$('chart'),cx2=chartC.getContext('2d');
+function drawChart(){
+  if(!S.f.chart){return}
+  const dpr=window.devicePixelRatio||1,w=chartC.clientWidth,h=chartC.clientHeight;if(!w)return;
+  if(chartC.width!==Math.round(w*dpr)){chartC.width=Math.round(w*dpr);chartC.height=Math.round(h*dpr)}
+  const c=cx2;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
+  const now=performance.now(),span=20000,X=t=>w-(now-t)/span*w,Y=v=>h-14-(v+.25)/1.65*(h-20);
+  c.strokeStyle='#1e2733';c.lineWidth=1;for(const g of [0,.5,1]){c.beginPath();c.moveTo(0,Y(g));c.lineTo(w,Y(g));c.stroke()}
+  c.fillStyle='#5b6677';c.font='9px system-ui';c.fillText('100%',2,Y(1)-2);c.fillText('0',2,Y(0)-2);
+  const idx=k=>(CH.i-CH.n+k+720)%720;
+  // state band
+  const col=['#14532d','#0e7490','#b45309','#b91c1c','#7f1d1d'];
+  for(let k=0;k<CH.n;k++){const i=idx(k);if(now-CH.t[i]>span)continue;c.fillStyle=CH.f[i]?col[CH.l[i]]:'#4c1d95';c.fillRect(X(CH.t[i]),h-8,Math.max(1.5,w/300),8)}
+  const line=(arr,color,dash,map=Y)=>{c.strokeStyle=color;c.setLineDash(dash||[]);c.lineWidth=1.6;c.beginPath();let pen=false;
+    for(let k=0;k<CH.n;k++){const i=idx(k);if(now-CH.t[i]>span){continue}const v=arr[i];if(!isFinite(v)){pen=false;continue}const x=X(CH.t[i]),y=map(Math.max(-.25,Math.min(1.4,v)));pen?c.lineTo(x,y):c.moveTo(x,y);pen=true}
+    c.stroke();c.setLineDash([])};
+  c.strokeStyle='#f59e0b';c.setLineDash([2,4]);c.beginPath();c.moveTo(0,Y(1-E.P.perclosLevel));c.lineTo(w,Y(1-E.P.perclosLevel));c.stroke();c.setLineDash([]);
+  line(CH.p,'#60a5fa');line(CH.y,'#22d3ee');line(CH.j,'#c084fc');line(CH.th,'#ef4444',[5,4]);line(CH.o,'#22c55e');
+}
+
+/* ---------- recording ---------- */
+function recRow(fr,R,now,inf){REC.push([Math.round(now),fr.face?1:0,fr.ear?fr.ear[0].toFixed(4):'',fr.ear?fr.ear[1].toFixed(4):'',fr.bs?fr.bs[0].toFixed(3):'',fr.bs?fr.bs[1].toFixed(3):'',
+  f2(R.o),f2(R.oL),f2(R.oR),f2(R.thr),R.closed?1:0,Math.round(R.closedMs||0),f2(R.perclos),fr.jaw!=null?fr.jaw.toFixed(3):'',fr.mar!=null?fr.mar.toFixed(3):'',
+  f0(fr.yaw),f0(fr.pitch),f0(fr.roll),f0(R.gy),f0(R.gp),Math.round(R.offMs||0),f0(R.score),R.key,R.lvl,fpsT,inf.toFixed(1)].join(','));if(REC.length>60000)REC.shift()}
+function dl(name,text,type='text/csv'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+
+/* ============================ CONTROLS UI ============================ */
+function renderEff(){
+  const P=E.P;$('sensV').textContent=S.sens;$('sens').value=S.sens;$('shSens').value=S.sens;$('shSensV').textContent=S.sens;
+  $('effTxt').innerHTML=`Closed below <b>${pct(P.closeThr)}</b> open · warn <b>${(P.warnMs/1000).toFixed(2)}s</b> · microsleep <b>${(P.microMs/1000).toFixed(2)}s</b> · sleep <b>${(P.sleepMs/1000).toFixed(1)}s</b><br>Off-road <b>${(P.distMs/1000).toFixed(1)}s</b> at <b>${Math.round(P.distYaw)}°</b> · PERCLOS limit <b>${pct(P.perclosLimit)}</b> · fatigue score ≥ <b>${Math.round(P.fatigueThr)}</b> · yawn jaw ≥ <b>${P.yawnJaw.toFixed(2)}</b>`;
+  PARAM.forEach(([k,,,,,,u])=>{const el=$('pv_'+k),ee=$('pe_'+k);if(!el)return;el.textContent=fmtP(S.p[k],u);const eff=P[k];ee.textContent=eff!==S.p[k]&&typeof eff==='number'?'effective: '+fmtP(eff,u):''});
+}
+const fmtP=(x,u)=>u==='%'?Math.round(x*100)+'%':u==='ms'?(x/1000).toFixed(2)+' s':u==='s'?Math.round(x)+' s':u==='°'?Math.round(x)+'°':u==='Hz'?x.toFixed(2)+' Hz':(+x).toFixed(x%1?2:0);
+function buildControls(){
+  const groups=[...new Set(FEAT.map(a=>a[1]))];
+  $('toggles').innerHTML=groups.map(g=>`<div class="grp">${g}</div><div class="tgrid">`+FEAT.filter(a=>a[1]===g).map(a=>`<label class="sw" title="${a[4]}"><input type="checkbox" data-f="${a[0]}"><span class="sl"></span><span class="lb">${a[2]}</span></label>`).join('')+'</div>').join('');
+  $('toggles').querySelectorAll('input').forEach(i=>{i.checked=!!S.f[i.dataset.f];i.onchange=()=>{S.f[i.dataset.f]=i.checked;S.preset='';markPreset();applySettings();syncSheet()}});
+  $('params').innerHTML=PARAM.map(([k,l,mn,mx,st])=>`<div class="prow"><label for="pi_${k}">${l}</label><output id="pv_${k}"></output><input id="pi_${k}" type="range" min="${mn}" max="${mx}" step="${st}" data-p="${k}"><div class="ev" id="pe_${k}"></div></div>`).join('');
+  $('params').querySelectorAll('input').forEach(i=>{i.value=S.p[i.dataset.p];i.oninput=()=>{S.p[i.dataset.p]=+i.value;S.preset='';markPreset();applySettings()}});
+  $('presets').innerHTML=Object.entries(PRESETS).map(([k,p])=>`<button data-pr="${k}">${p.n}</button>`).join('');
+  $('presets').querySelectorAll('button').forEach(b=>b.onclick=()=>applyPreset(b.dataset.pr));
+  $('perfBox').innerHTML=`
+   <div class="prow"><label>Max FPS</label><output id="pfMax"></output><input type="range" id="pfMaxI" min="5" max="30" step="1"></div>
+   <div class="prow"><label>Min FPS (adaptive floor)</label><output id="pfMin"></output><input type="range" id="pfMinI" min="3" max="15" step="1"></div>
+   <div class="prow"><label>Face detection confidence</label><output id="pfConf"></output><input type="range" id="pfConfI" min=".3" max=".9" step=".05"></div>
+   <div class="prow"><label>Camera resolution</label><select id="pfRes"><option>320x240</option><option>480x360</option><option>640x480</option><option>1280x720</option></select></div>
+   <div class="prow"><label>Inference backend</label><select id="pfDel"><option value="auto">Auto (GPU→CPU)</option><option>GPU</option><option>CPU</option></select></div>
+   <div class="prow"><label>MediaPipe version</label><select id="pfVer">${MP_VERSIONS.map(x=>`<option>${x}</option>`).join('')}</select><div class="ev">1.x is newest (has usage metrics, blocked by the Privacy switch); 0.10.34 has no metrics code. Changing reloads the page.</div></div>
+   <button class="mini" id="pfApply" style="margin-top:8px">Apply resolution / backend / version (restarts camera)</button>`;
+  const pv=()=>{$('pfMax').textContent=S.perf.maxFps;$('pfMin').textContent=S.perf.minFps;$('pfConf').textContent=S.perf.detConf;$('pfMaxI').value=S.perf.maxFps;$('pfMinI').value=S.perf.minFps;$('pfConfI').value=S.perf.detConf;$('pfRes').value=S.perf.res;$('pfDel').value=S.perf.delegate;$('pfVer').value=S.perf.mpVer};pv();
+  $('pfMaxI').oninput=e=>{S.perf.maxFps=+e.target.value;if(S.perf.minFps>S.perf.maxFps)S.perf.minFps=S.perf.maxFps;pv();applySettings()};
+  $('pfMinI').oninput=e=>{S.perf.minFps=+e.target.value;if(S.perf.maxFps<S.perf.minFps)S.perf.maxFps=S.perf.minFps;pv();applySettings()};
+  $('pfConfI').oninput=e=>{S.perf.detConf=+e.target.value;pv();applySettings()};
+  $('pfRes').onchange=e=>{S.perf.res=e.target.value;save()};$('pfDel').onchange=e=>{S.perf.delegate=e.target.value;save()};$('pfVer').onchange=e=>{S.perf.mpVer=e.target.value;save()};
+  $('pfApply').onclick=async()=>{if(loadedVer&&S.perf.mpVer!==loadedVer){try{localStorage.setItem(CFG.STORE,JSON.stringify(S))}catch(e){}location.reload();return}const was=running&&!demo;if(was)stop();if(lm&&S.perf.delegate!==delegateUsed){try{lm.close()}catch(e){}lm=null}if(was)start()};
+  window._pv=pv;
+}
+function markPreset(){$('presets').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.pr===S.preset))}
+function applyPreset(k){const p=PRESETS[k];S.sens=p.sens;S.f={...defF(),...Object.fromEntries(Object.entries(p.f).map(([a,b])=>[a,!!b]))};S.p={...defP(),...p.p};S.perf={...PERF_DEF,...p.perf};S.preset=k;refreshControls();applySettings()}
+function refreshControls(){$('toggles').querySelectorAll('input').forEach(i=>i.checked=!!S.f[i.dataset.f]);$('params').querySelectorAll('input').forEach(i=>i.value=S.p[i.dataset.p]);window._pv&&window._pv();markPreset();syncSheet()}
+function syncSheet(){$('shVol').value=S.vol;$('shVolV').textContent=Math.round(S.vol*100)+'%';$('shPrev').checked=S.preview;$('shVoice').checked=!!S.f.voice;$('fPv').classList.toggle('on',S.preview)}
+function setMode(m){
+  S.mode=m;document.body.className='mode-'+m;save();
+  document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  const host=m==='final'?$('fPrev'):$('tVideoBox');if(v.parentNode!==host){host.insertBefore(v,host.firstChild);if(v.srcObject)v.play().catch(()=>{})}
+  if(location.hash!=='#'+m)history.replaceState(null,'','#'+m);
+  if(m==='final'){ox.clearRect(0,0,ovc.width,ovc.height)}
+  lastIco='';
+}
+
+/* ---------- wire up ---------- */
+buildControls();applySettings();syncSheet();markPreset();
+setMode(location.hash==='#final'?'final':location.hash==='#test'?'test':(S.mode||'test'));
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+$('sens').oninput=e=>{S.sens=+e.target.value;S.preset='';markPreset();applySettings()};
+$('shSens').oninput=e=>{S.sens=+e.target.value;applySettings()};
+$('shVol').oninput=e=>{S.vol=+e.target.value;syncSheet();save()};$('shVol').onchange=()=>{AL.init();AL.tone(880,200)};
+$('shPrev').onchange=e=>{S.preview=e.target.checked;syncSheet();save()};$('shVoice').onchange=e=>{S.f.voice=e.target.checked;refreshControls();save()};
+$('tStart').onclick=start;$('tStop').onclick=stop;$('tCal').onclick=calibrate;$('tDemo').onclick=startDemo;
+$('fStart').onclick=()=>running?stop():start();$('fCal').onclick=calibrate;
+$('fGear').onclick=()=>$('sheet').classList.add('on');$('shX').onclick=()=>$('sheet').classList.remove('on');
+$('shTest').onclick=()=>{$('sheet').classList.remove('on');setMode('test')};
+$('fFull').onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen({navigationUI:'hide'})}catch(e){}};
+$('fBanX').onclick=()=>{AL.snooze=performance.now()+600000;$('fBanner').classList.remove('on')};
+$('fAllOn').onclick=()=>{FEAT.forEach(a=>S.f[a[0]]=true);S.preset='';refreshControls();applySettings()};
+$('fDef').onclick=()=>{S.f=defF();S.preset='';refreshControls();applySettings()};
+$('pReset').onclick=()=>{S.p=defP();refreshControls();applySettings()};
+$('logClr').onclick=()=>{$('evlog').innerHTML=''};
+$('logDl').onclick=()=>dl('drowsiness_events.csv','time,event\n'+LOG.join('\n'));
+document.querySelectorAll('[data-sim]').forEach(b=>b.onclick=()=>{AL.init();const k=b.dataset.sim;
+  if(k==='test'){AL.tone(660,250);setTimeout(()=>AL.tone(880,400,'square'),400);setTimeout(()=>AL.chime(),1000);setTimeout(()=>AL.say('Sound test. Wake up!'),1700);AL.vib([200,100,200]);return}
+  if(!running){msg('Start the camera or the demo first');return}simulate(k,performance.now());logEv('','Simulated: '+b.textContent)});
+$('recBtn').onclick=()=>{if(REC){$('recBtn').textContent='⏺ Record frames';$('recDl').disabled=false;window._rec=REC;REC=null}else{REC=[];$('recBtn').innerHTML='<span class="rec">■ Stop recording</span>';$('recDl').disabled=true}};
+$('recDl').onclick=()=>{const r=window._rec||[];dl('drowsiness_frames.csv','t_ms,face,earL,earR,blinkL,blinkR,open,openL,openR,thr,closed,closed_ms,perclos,jaw,mar,yaw,pitch,roll,gaze_yaw,gaze_pitch,offroad_ms,score,state,level,fps_target,infer_ms\n'+r.join('\n'))};
+$('setExp').onclick=()=>{$('setTxt').value=JSON.stringify({sens:S.sens,f:S.f,p:S.p,perf:S.perf},null,1)};
+$('setImp').onclick=()=>{try{const j=JSON.parse($('setTxt').value);S.sens=j.sens||S.sens;S.f={...defF(),...j.f};S.p={...defP(),...j.p};S.perf={...PERF_DEF,...j.perf};S.preset='';refreshControls();applySettings();msg('Settings imported')}catch(e){msg('Import failed: '+e.message)}};
+$('setAll').onclick=()=>{try{localStorage.removeItem(CFG.STORE)}catch(e){}S.sens=5;S.f=defF();S.p=defP();S.perf={...PERF_DEF};S.vol=.8;S.preview=true;S.preset='balanced';refreshControls();applySettings();msg('All settings reset')};
+window.addEventListener('hashchange',()=>{if(location.hash==='#final'||location.hash==='#test')setMode(location.hash.slice(1))});
+window.DDS={get metricsBlocked(){return metricsBlocked},get mpVer(){return loadedVer},E,S,Engine,simulate,start,stop,startDemo,setMode,get running(){return running},get fps(){return fpsMeas},get inf(){return infAvg},get delegate(){return delegateUsed},get lastRes(){return lastRes}};
+</script>
+</body>
+</html>
